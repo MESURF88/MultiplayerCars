@@ -8,26 +8,47 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-
-set(CMAKE_BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/target)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message("Debug")
+    set(CMAKE_BINARY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/targetdbg")
+else()
+    message("Release")
+    set(CMAKE_BINARY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/target")
+endif()
 message("${CMAKE_BINARY_DIR}")
 
 if(CMAKE_VERSION VERSION_LESS "3.7.0")
     set(CMAKE_INCLUDE_CURRENT_DIR ON)
 endif()
 
-# https support
-add_compile_definitions(SIO_TLS)
+if (MSVC)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
+endif(MSVC)
 
-# sioclient
-find_library(SOCKET_IO_LIB
-NAMES sioclient
-HINTS "C:/Program\ Files\ (x86)/sioclient/lib")
-message(STATUS "sioclient LIB: [${SOCKET_IO_LIB}]")
-find_library(SOCKET_IO_TLS_LIB
-NAMES sioclient_tls
-HINTS "C:/Program\ Files\ (x86)/sioclient/lib")
-message(STATUS "sioclient_tls LIB: [${SOCKET_IO_TLS_LIB}]")
+set(OPEN_SSL_INCLUDE_DIR "C:/Program\ Files/OpenSSL-Win64/include")
+
+set(OPEN_SSL_LIB_PATH "C:/Program\ Files/OpenSSL-Win64/lib")
+
+# boost (websockets)
+set(Boost_USE_STATIC_LIBS        ON)  # only find static libs
+set(Boost_USE_DEBUG_LIBS         OFF) # ignore debug libs and 
+set(Boost_USE_RELEASE_LIBS       ON)  # only find release libs 
+set(Boost_USE_MULTITHREADED      ON)
+set(Boost_USE_STATIC_RUNTIME    OFF) 
+find_package(Boost 1.82.0 COMPONENTS date_time system random)
+
+if(Boost_FOUND)   
+    message("Boost 1.82 found")
+endif()
+
+#cpr (http)
+find_library(CPR_LIB
+NAMES cpr
+HINTS "C:/Program\ Files\ (x86)/cpr/lib")
+message(STATUS "cpr LIB: [${CPR_LIB}]")
+#json
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+add_subdirectory(json)
 
 # raylib
 find_package(raylib QUIET)
@@ -55,20 +76,57 @@ option(BUILD_RAYLIB_CPP_EXAMPLES "Examples" ${RAYLIB_CPP_IS_MAIN})
 # Include Directory
 add_subdirectory(include)
 
-# include files
-set(includes
-
+# include directory
+set(includes_dir
+${CMAKE_CURRENT_SOURCE_DIR}/http
+${CMAKE_CURRENT_SOURCE_DIR}/websocket
+${CMAKE_CURRENT_SOURCE_DIR}/gui
 )
 
 # source files
 set(source
+${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.cpp
+${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketConnect.cpp
+${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.cpp
 main.cpp
 )
 
 # Executable
-add_executable(${ProjName} ${includes} ${source})
-target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib ${SOCKET_IO_LIB} ${SOCKET_IO_TLS_LIB})
-target_include_directories(${ProjName} PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/socket.io-client-cpp/lib/catch/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/socket.io-client-cpp/src"
+add_executable(${ProjName} ${includes_dir} ${source})
+
+target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib ${CPR_LIB} nlohmann_json::nlohmann_json ${Boost_LIBRARIES} 
+${OPEN_SSL_LIB_PATH}/libssl.lib
+${OPEN_SSL_LIB_PATH}/libcrypto.lib
 )
+
+target_include_directories(${ProjName} PRIVATE
+    ${includes_dir}
+    "${CMAKE_CURRENT_SOURCE_DIR}/json/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cpr/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/curl/include"
+    ${Boost_INCLUDE_DIRS}
+    ${OPEN_SSL_INCLUDE_DIR}
+)
+target_compile_features(${ProjName} PRIVATE cxx_std_17)
+
+file(COPY "C:/Program\ Files\ (x86)/cpr/include/cpr/cprver.h" DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/cpr/include/cpr")
+
+add_custom_command(TARGET ${ProjName} POST_BUILD       
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug>/libcurl-d.dll"      # <--this is in-file
+        $<TARGET_FILE_DIR:${ProjName}>)                 # <--this is out-file path
+		
+add_custom_command(TARGET ${ProjName} POST_BUILD       
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug>/cpr.dll"      # <--this is in-file
+        $<TARGET_FILE_DIR:${ProjName}>)                 # <--this is out-file path
+
+add_custom_command(TARGET ${ProjName} POST_BUILD       
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug>/zlib.dll"      # <--this is in-file
+        $<TARGET_FILE_DIR:${ProjName}>)                 # <--this is out-file path
+
+#add_custom_command(TARGET ${ProjName} POST_BUILD       
+#    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+#       "${CMAKE_CURRENT_SOURCE_DIR}/target/_deps/raylib-build/raylib/raylib.dll"      # <--this is in-file
+#        $<TARGET_FILE_DIR:${ProjName}>)                 # <--this is out-file path
