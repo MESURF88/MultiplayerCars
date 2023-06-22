@@ -1,25 +1,10 @@
-/*******************************************************************************************
-*
-*   raylib [core] example - Basic window
-*
-*   Welcome to raylib!
-*
-*   To test examples, just press F6 and execute raylib_compile_execute script
-*   Note that compiled executable is placed in the same folder as .c file
-*
-*   You can find all basic examples on C:\raylib\raylib\examples folder or
-*   raylib official webpage: www.raylib.com
-*
-*   Enjoy using raylib. :)
-*
-*   This example has been created using raylib 1.0 (www.raylib.com)
-*   raylib is licensed under an unmodified zlib/libpng license (View raylib.h for details)
-*
-*   Copyright (c) 2014 Ramon Santamaria (@raysan5)
-*
-********************************************************************************************/
-#include <sio_client.h>
-#include <internal/sio_packet.h>
+#ifndef _WIN32
+#include "json.hpp" //nlohmann::json cannot build in MSVC
+#endif
+#include "raylib-cpp.hpp"
+#include "postRequest.hpp"
+#include "websocketConnect.hpp"
+#include "windowContext.hpp"
 #include <functional>
 #include <iostream>
 #include <thread>
@@ -27,31 +12,19 @@
 #include <condition_variable>
 #include <string>
 
-#ifndef _WIN32
-#include "json.hpp" //nlohmann::json cannot build in MSVC
-#endif
-#include "raylib-cpp.hpp"
-
-using namespace sio;
 using namespace std;
 std::mutex _lock;
+
+//----------------------------------------------------------------------------------
 
 std::condition_variable_any _cond;
 bool connect_finish = false;
 
-
-
 class connection_listener
 {
-    sio::client &handler;
 
 public:
-    
-    connection_listener(sio::client& h):
-    handler(h)
-    {
-    }
-    
+    // use maybe?
 
     void on_connected()
     {
@@ -60,95 +33,71 @@ public:
         connect_finish = true;
         _lock.unlock();
     }
-    void on_close(client::close_reason const& reason)
+    void on_close()
     {
-        std::cout<<"sio closed "<<std::endl;
+        std::cout<<"socket closed "<<std::endl;
         exit(0);
     }
     
     void on_fail()
     {
-        std::cout<<"sio failed "<<std::endl;
+        std::cout<<"socket failed "<<std::endl;
         exit(0);
     }
 };
 
-int participants = -1;
-
-socket::ptr current_socket;
-
 //globals
 string timestamp;
 
-void bind_events()
-{
-	current_socket->on("time", sio::socket::event_listener_aux([&](string const& name, message::ptr const& data, bool isAck,message::list &ack_resp)
-                       {
-                           _lock.lock();
-                           timestamp = data->get_string();
-                           _lock.unlock();
-                       }));
-
-}
-
-
-
 int main() {
-    // Initialization
-    //--------------------------------------------------------------------------------------
-    int screenWidth = 1000;
-    int screenHeight = 450;
-    raylib::Color textColor = raylib::Color::LightGray();
-    raylib::Window window(screenWidth, screenHeight, "raylib [core] example - basic window");
-
     SetTargetFPS(60);
     //--------------------------------------------------------------------------------------
-#if SIO_TLS
-    std::cout << "TLS configured" << std::endl;
-#endif  
-    // socket.io
-    sio::client h;
-    connection_listener l(h);
 
-    h.set_open_listener(std::bind(&connection_listener::on_connected, &l));
-    h.set_close_listener(std::bind(&connection_listener::on_close, &l,std::placeholders::_1));
-    h.set_fail_listener(std::bind(&connection_listener::on_fail, &l));
-    h.set_logs_verbose();
+    
+
     //h.connect("http://127.0.0.1:3000");
     //h.connect("https://safe-depths-24899.herokuapp.com");
-    h.connect("http://safe-depths-24899.herokuapp.com");
-
-    _lock.lock();
-    if(!connect_finish)
+    //h.connect("http://safe-depths-24899.herokuapp.com");
+    //h.connect("ws://127.0.0.1:3000/ws");
+    //h.connect("wss://127.0.0.1:3000/debug" ); // testing http
+    //login
+    int statusCode;
+    //get status code by reference
+    std::string otp = PostRequestPassword("https://127.0.0.1:3000/login", statusCode);
+    if ((statusCode == 200) && (otp != ""))
     {
-        _cond.wait(_lock);
-    }
-    _lock.unlock();
-	current_socket = h.socket();
-    bind_events();
-
-    // Main game loop
-    while (!window.ShouldClose()) {   // Detect window close button or ESC key
-        // Update
-        //----------------------------------------------------------------------------------
-        // Update your variables here
-        //----------------------------------------------------------------------------------
-
-        // Draw
-        //----------------------------------------------------------------------------------
-        BeginDrawing();
+        // boost websockets
+        //wss://localhost:3000/ws
+        WebsocketConn("127.0.0.1", "3000");
+        
+        //TODO: h.connect("wss://127.0.0.1:3000/ws", std::map<std::string,std::string>{{"otp", otp}});
+        /*_lock.lock();
+        if(!connect_finish)
         {
-            window.ClearBackground(RAYWHITE);
-            _lock.lock();
-            textColor.DrawText("Congrats! Here is the Time: " + timestamp, 190, 200, 20);
-            _lock.unlock();
+            _cond.wait(_lock);
         }
-        EndDrawing();
-        //----------------------------------------------------------------------------------
+        _lock.unlock();*/
 
+
+        // Main game loop
+        while (windowShouldCloseWrapper()) {   // Detect window close button or ESC key
+            // Update
+            //----------------------------------------------------------------------------------
+            // Update your variables here
+            //----------------------------------------------------------------------------------
+
+            // Draw
+            //----------------------------------------------------------------------------------
+            drawTextTestBox(timestamp);
+            //----------------------------------------------------------------------------------
+
+        }
+    }
+    else 
+    {
+        std::cout << "Error: couldn't login, http status code: " << statusCode << std::endl;
     }
 
-    h.sync_close();
-    h.clear_con_listeners();
+
     return 0;
 }
