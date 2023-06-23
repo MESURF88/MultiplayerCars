@@ -209,9 +209,9 @@ public:
     }
 };
 
-std::string WebsocketConn(std::string host, std::string port)
+std::string WebsocketConn(std::string host, std::string port, std::string otp)
 {
-    std::cout << host << " " << port << std::endl;
+    std::cout << "now connecting to " << host << " " << port << std::endl;
     std::ifstream envAuthCert;
     std::string response;
 #if 0
@@ -223,7 +223,7 @@ std::string WebsocketConn(std::string host, std::string port)
 #endif
     // This holds the root certificate used for verification
     std::string cert = "";
-    envAuthCert.open("../server.crt");
+    envAuthCert.open("server.crt");
     if (envAuthCert.is_open()) { // always check whether the file is open
         std::stringstream strStream;
         strStream << envAuthCert.rdbuf(); //read the file
@@ -279,27 +279,36 @@ std::string WebsocketConn(std::string host, std::string port)
                 req.set(http::field::user_agent,
                     std::string(BOOST_BEAST_VERSION_STRING) +
                     " websocket-client-coro");
+
+                req.set(http::field::origin, "https://localhost:3000");
             }));
 
         // Perform the websocket handshake
-        ws.handshake(host, "/ws"); //TODO: add query strings
+        ws.handshake(host, "/ws?otp=" + otp); //TODO: add query strings
 
-        // Send the message
-        ws.write(net::buffer(std::string("this is test!!!")));
+        do
+        {
+            // This buffer will hold the incoming message
+            beast::flat_buffer buffer;
 
-        // This buffer will hold the incoming message
-        beast::flat_buffer buffer;
+            // Read a message into our buffer
+            ws.read(buffer, ec);
 
-        // Read a message into our buffer
-        ws.read(buffer);
+            if (ec)
+                std::cout << "error: could not read buffer" << std::endl;
+
+            // The make_printable() function helps print a ConstBufferSequence
+            std::cout << beast::make_printable(buffer.data()) << std::endl;
+        } while (true);
 
         // Close the WebSocket connection
         ws.close(websocket::close_code::normal);
 
         // If we get here then the connection is closed gracefully
 
-        // The make_printable() function helps print a ConstBufferSequence
-        std::cout << beast::make_printable(buffer.data()) << std::endl;
+
+        // Send the message
+        //TODO: ws.write(net::buffer(std::string("this is test!!!")));
     }
     catch (std::exception const& e)
     {

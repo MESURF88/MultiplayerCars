@@ -188,5 +188,5 @@ public:
 };
 #endif
 
-std::string WebsocketConn(std::string host, std::string port);
+std::string WebsocketConn(std::string host, std::string port, std::string otp);
 #endif // _WEBSOCKETCONNECT_

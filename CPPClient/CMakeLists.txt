@@ -126,6 +126,16 @@ add_custom_command(TARGET ${ProjName} POST_BUILD
         "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug>/zlib.dll"      # <--this is in-file
         $<TARGET_FILE_DIR:${ProjName}>)                 # <--this is out-file path
 
+add_custom_command(TARGET ${ProjName} POST_BUILD       
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/server.crt"
+        $<TARGET_FILE_DIR:${ProjName}>) 
+		
+add_custom_command(TARGET ${ProjName} POST_BUILD       
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${CMAKE_CURRENT_SOURCE_DIR}/.env"
+		$<TARGET_FILE_DIR:${ProjName}>) 
+		
 #add_custom_command(TARGET ${ProjName} POST_BUILD       
 #    COMMAND ${CMAKE_COMMAND} -E copy_if_different
 #       "${CMAKE_CURRENT_SOURCE_DIR}/target/_deps/raylib-build/raylib/raylib.dll"      # <--this is in-file

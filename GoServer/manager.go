@@ -34,7 +34,7 @@ func checkOrigin(r *http.Request) bool {
 
 	// Grab the request origin
 	origin := r.Header.Get("Origin")
-
+	
 	switch origin {
 	case "https://localhost:3000":
 		return true
@@ -135,7 +135,7 @@ func (m *Manager) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 // serveWS is a HTTP Handler that the has the Manager that allows connections
 func (m *Manager) serveWS(w http.ResponseWriter, r *http.Request) {
-    log.Println("TODO:::::")
+
 	// Grab the OTP in the Get param
 	otp := r.URL.Query().Get("otp")
 	if otp == "" {
