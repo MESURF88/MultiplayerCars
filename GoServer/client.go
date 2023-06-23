@@ -54,7 +54,7 @@ func (c *Client) sendPeriodicTimeMessages() {
 	var pseudoTime int = 18
 	var errorFound bool = false
 	for {
-		err := c.connection.WriteMessage(websocket.TextMessage, []byte("42[\"time\",\""+strconv.Itoa(pseudoTime)+"\"]"))
+		err := c.connection.WriteMessage(websocket.TextMessage, []byte("[\"time\",\""+strconv.Itoa(pseudoTime)+"\"]"))
 		pseudoTime++;
 		if err != nil {
 			errorFound = true

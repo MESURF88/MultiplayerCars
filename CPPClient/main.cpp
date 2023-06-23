@@ -53,24 +53,22 @@ int main() {
     SetTargetFPS(60);
     //--------------------------------------------------------------------------------------
 
-    
-
-    //h.connect("http://127.0.0.1:3000");
-    //h.connect("https://safe-depths-24899.herokuapp.com");
-    //h.connect("http://safe-depths-24899.herokuapp.com");
-    //h.connect("ws://127.0.0.1:3000/ws");
-    //h.connect("wss://127.0.0.1:3000/debug" ); // testing http
     //login
+    //std::string host = "127.0.0.1:3000";
+    //std::string port = "3000";
+    std::string host = "onlinecarsimgame-ab2533447e53.herokuapp.com";
+    std::string port = "443"; //http
+
     int statusCode;
     //get status code by reference
-    std::string otp = PostRequestPassword("https://127.0.0.1:3000/login", statusCode);
+    //std::string otp = PostRequestPassword("https://" + host + ":" + port + "/login", statusCode);
+    std::string otp = PostRequestPassword("https://" + host + "/login", statusCode);
     if ((statusCode == 200) && (otp != ""))
     {
         // boost websockets
-        //wss://localhost:3000/ws
-        WebsocketConn("127.0.0.1", "3000");
+        //WebsocketConn("127.0.0.1", "3000", otp);
+        WebsocketConn(host, "443", otp);
         
-        //TODO: h.connect("wss://127.0.0.1:3000/ws", std::map<std::string,std::string>{{"otp", otp}});
         /*_lock.lock();
         if(!connect_finish)
         {

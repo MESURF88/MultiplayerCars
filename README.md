@@ -1,16 +1,22 @@
-# NodeServer
+# GoServer
 
 ```
-contains the javascript socket.io code to communicates with the clients
+contains the Go websocket code to communicates with the clients
 ```
 
 # CPPClient
 
 ```
-contains the c++ code for socket.io and raylab library to create graphics
+contains the c++ code for boost cpr (curlib) for websockets and raylab library to create graphics
 ```
 
-# installing for client
+# install Go
+
+```
+https://go.dev/doc/install
+```
+
+# install Perl
 
 ```
 need to install perl x64
@@ -18,8 +24,13 @@ https://strawberryperl.com/
 
 It should place the exe in
 C:/Strawberry/perl/bin/perl.exe
+```
 
-need to install openssl for windows
+# installing for client
+
+```
+
+1. need to install openssl for windows
 get chocolatey with the instructions install chocolatey for individual use
 https://chocolatey.org/install
 
@@ -32,26 +43,29 @@ and should see this text:
 The install of openssl was successful.
 Software installed to 'C:\Program Files\OpenSSL-Win64\
 
-then install curl for 64-bit
+2. then install curl for 64-bit
 https://curl.se/windows/
 
 this will be installed in C:\ProgramData\chocolatey\lib\curl\tools
 
-install boost following the instructions
+3. install boost following the instructions
 https://github.com/ErisExchange/socket.io-client-cpp/blob/eris-sio_tls_support_non_tls_uris/BOOST.md
 after downloading and extracting run
 bootstrap.bat
 then open a administrator prompt and run this command in the folder:
 .\b2 install --prefix="C:\Program Files\boost" --with-system --with-date_time --with-random link=static runtime-link=shared threading=multi
 
-install latest x64 cmake
+4. install latest x64 cmake
 https://cmake.org/download/
 
+5. Add library paths
 add C:\Program Files\CMake\bin to the user environmental variable PATH
 add C:\Program Files\OpenSSL-Win64\include to the user environmental variable PATH
 
-need at least visual studio 2019 and this path to vsvars64.bat
+6. check to see, at least visual studio 2019 and this path to vsvars64.bat
 C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build
+
+7. run setup_release_dependencies.bat as administator then setup_debug_dependencies.bat as administator
 
 for curl
 -- Install configuration: "Release"
@@ -159,11 +173,11 @@ for cpr
 -- Up-to-date: C:/Program Files (x86)/cpr/include/cpr
 -- Installing: C:/Program Files (x86)/cpr/include/cpr/cprver.h
 
-Add curl to the PATH
+8. add curl to the PATH
 add C:\Program Files (x86)\CURL\lib to the user environmental variable PATH
 add C:\Program Files (x86)\CURL\include to the user environmental variable PATH
 
-add cpr to the PATH
+9. add cpr to the PATH
 add C:\Program Files (x86)\cpr\lib to the user environmental variable PATH
 add C:\Program Files (x86)\cpr\include to the user environmental variable PATH
 ```
@@ -182,25 +196,29 @@ if switching back and forth often it is best to choose to build_default_debug_cl
 
 NOTE: if cmakecache error when running scripts, delete the target (targetdbg for Debug) folder in CPPClient
 
-building with tls
-Have built socket.io-client-cpp app with SIO_TLS in DEFINES (compiler flag: -DSIO_TLS) - connects via https fine now! This enables TLS support as mentioned here:
 ```
 
 # running client and server locally
 
 ```
 first run server in terminal:
-cd .\NodeServer
-npm start
+cd .\GoServer
+go run .
 
 in another terminal run client (for nmake builds)
 .\CPPClient\nmakebuild\carclient.exe
 (for visual studio builds)
 .\CPPClient\build\carclient.exe
+
+or use visual studio if (default builds)
 ```
 
 # testing server
-
 ```
 use piesockettester extension for google chrome
+```
+
+# online server at
+```
+https://onlinecarsimgame-ab2533447e53.herokuapp.com/
 ```
