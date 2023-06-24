@@ -11,9 +11,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Debug")
     set(CMAKE_BINARY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/targetdbg")
+	set(Boost_USE_DEBUG_LIBS ON) 
 else()
     message("Release")
     set(CMAKE_BINARY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/target")
+	set(Boost_USE_RELEASE_LIBS ON) 
 endif()
 message("${CMAKE_BINARY_DIR}")
 
@@ -35,7 +37,7 @@ set(Boost_USE_DEBUG_LIBS         OFF) # ignore debug libs and
 set(Boost_USE_RELEASE_LIBS       ON)  # only find release libs 
 set(Boost_USE_MULTITHREADED      ON)
 set(Boost_USE_STATIC_RUNTIME    OFF) 
-find_package(Boost 1.82.0 COMPONENTS date_time system random)
+find_package(Boost 1.82.0 COMPONENTS date_time system random thread)
 
 if(Boost_FOUND)   
     message("Boost 1.82 found")
@@ -87,6 +89,8 @@ ${CMAKE_CURRENT_SOURCE_DIR}/gui
 set(inc
 ${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketConnect.hpp
+${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketSession.hpp
+${CMAKE_CURRENT_SOURCE_DIR}/gui/threadSafeQueue.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.hpp
 )
 
@@ -94,6 +98,7 @@ ${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.hpp
 set(source
 ${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketConnect.cpp
+${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketSession.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.cpp
 main.cpp
 )
@@ -101,9 +106,22 @@ main.cpp
 # Executable
 add_executable(${ProjName} ${inc} ${source})
 
-target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib ${CPR_LIB} nlohmann_json::nlohmann_json ${Boost_LIBRARIES} 
+target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib 
+${CPR_LIB} 
+nlohmann_json::nlohmann_json 
 ${OPEN_SSL_LIB_PATH}/libssl.lib
 ${OPEN_SSL_LIB_PATH}/libcrypto.lib
+#${Boost_LIBRARIES} 
+"$<$<CONFIG:Debug>:${Boost_INCLUDE_DIRS}/../../lib/libboost_date_time-vc142-mt-gd-x64-1_82.lib>"
+"$<$<CONFIG:Debug>:${Boost_INCLUDE_DIRS}/../../lib/libboost_system-vc142-mt-gd-x64-1_82.lib>"
+"$<$<CONFIG:Debug>:${Boost_INCLUDE_DIRS}/../../lib/libboost_random-vc142-mt-gd-x64-1_82.lib>"
+"$<$<CONFIG:Debug>:${Boost_INCLUDE_DIRS}/../../lib/libboost_thread-vc142-mt-gd-x64-1_82.lib>"
+"$<$<CONFIG:Debug>:${Boost_INCLUDE_DIRS}/../../lib/libboost_chrono-vc142-mt-gd-x64-1_82.lib>"
+"$<$<CONFIG:Release>:${Boost_INCLUDE_DIRS}/../..//lib/libboost_date_time-vc142-mt-x64-1_82.lib>"
+"$<$<CONFIG:Release>:${Boost_INCLUDE_DIRS}/../../lib/libboost_system-vc142-mt-x64-1_82.lib>"
+"$<$<CONFIG:Release>:${Boost_INCLUDE_DIRS}/../../lib/libboost_random-vc142-mt-x64-1_82.lib>"
+"$<$<CONFIG:Release>:${Boost_INCLUDE_DIRS}/../../lib/libboost_thread-vc142-mt-x64-1_82.lib>"
+"$<$<CONFIG:Release>:${Boost_INCLUDE_DIRS}/../../lib/libboost_chrono-vc142-mt-x64-1_82.lib>"
 )
 
 target_include_directories(${ProjName} PRIVATE

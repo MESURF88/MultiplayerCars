@@ -162,7 +162,7 @@ func (m *Manager) serveWS(w http.ResponseWriter, r *http.Request) {
 	client := NewClient(conn, m)
 	// Add the newly created client to the manager
 	m.addClient(client)
-	// Start the read / write processes
+	// Start the read / write processes for now
 	go client.sendPeriodicTimeMessages()
 	
 	//TODO: go client.readMessages()

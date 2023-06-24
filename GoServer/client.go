@@ -5,12 +5,10 @@ import (
 	"log"
 	"time"
 
-	"strconv"
-
 	"github.com/gorilla/websocket"
 )
 
-const socketIOIntervalSendNsec = 5000000000
+const socketIOIntervalSendNsec = 500000000 // 0.5 seconds
 
 var (
 	// pongWait is how long we will await a pong response from client
@@ -51,11 +49,9 @@ func (c *Client) sendPeriodicTimeMessages() {
 	2           => Socket.IO "EVENT" packet type
 	[...]       => content
 	*/
-	var pseudoTime int = 18
 	var errorFound bool = false
 	for {
-		err := c.connection.WriteMessage(websocket.TextMessage, []byte("[\"time\",\""+strconv.Itoa(pseudoTime)+"\"]"))
-		pseudoTime++;
+		err := c.connection.WriteMessage(websocket.TextMessage, []byte("[\"time\",\""+time.Now().String()+"\"]"))
 		if err != nil {
 			errorFound = true
 			log.Println(err)

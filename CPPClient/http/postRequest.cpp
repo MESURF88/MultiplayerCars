@@ -9,7 +9,7 @@ std::string PostRequestPassword(std::string url, int &statusCode)
     nlohmann::json authJson;
     std::ifstream envAuthJson; 
     envAuthJson.open(".env");
-    if ( envAuthJson.is_open() ) { // always check whether the file is open
+    if ( envAuthJson.is_open() ) {
       authJson = nlohmann::json::parse(envAuthJson);
     }
     envAuthJson.close();
