@@ -192,9 +192,15 @@ build_default_debug_client.bat
 to build an executable in nmakebuild or a solution in build respectively
 
 to build release, must first run the setup_release_dependencies.bat before building with the corresponding scripts,
-if switching back and forth often it is best to choose to build_default_debug_client.bat and use visual studio to switch configurations.
+build_release_client_nmake.bat
+or
+build_default_release_client.bat
+to build an executable in nmakebuild or a solution in build respectively
 
-NOTE: if cmakecache error when running scripts, delete the target (targetdbg for Debug) folder in CPPClient
+if need to rebuild the dependencies (curl, cpr, nlohmann/json), the run the clean_dependencies.bat
+
+NOTE: if cmakecache error when running scripts, delete the target (targetdbg for Debug) (target for Release) folder in CPPClient
+and re run build script
 
 ```
 

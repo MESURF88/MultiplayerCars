@@ -44,6 +44,17 @@ public:
         std::cout<<"socket failed "<<std::endl;
         exit(0);
     }
+
+    void on_message(std::string msg)
+    {
+        parseMessage(msg);
+    }
+
+private:
+    int parseMessage(const std::string& msg)
+    {
+
+    }
 };
 
 //globals
@@ -52,9 +63,10 @@ string timestamp;
 int main() {
     SetTargetFPS(60);
     //--------------------------------------------------------------------------------------
-
+    connection_listener listener;
+    std::function<void(std::string)> stdf_message = [](std::string s) { std::cout << s << std::endl; }; //TODO: listener.on_message(s); };
     //login
-    //std::string host = "127.0.0.1:3000";
+    //std::string host = "127.0.0.1:3000"; 
     //std::string port = "3000";
     std::string host = "onlinecarsimgame-ab2533447e53.herokuapp.com";
     std::string port = "443"; //http
@@ -67,7 +79,7 @@ int main() {
     {
         // boost websockets
         //WebsocketConn("127.0.0.1", "3000", otp);
-        WebsocketConn(host, "443", otp);
+        WebsocketConn(host, "443", otp, stdf_message);
         
         /*_lock.lock();
         if(!connect_finish)
