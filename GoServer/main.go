@@ -15,7 +15,6 @@ func setupAPI(ctx context.Context) {
 	// Create a Manager instance used to handle WebSocket Connections
 	manager := NewManager(ctx)
 
-    //http.Handle("/", http.FileServer(http.Dir("./frontend")))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Home")
 		fmt.Println("***Port***")

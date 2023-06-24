@@ -1,4 +1,3 @@
-// Checks if _ANIMALS IF DECLARED
 #ifndef _POSTREQUEST_
 #define _POSTREQUEST_
 #include <string>
