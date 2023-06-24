@@ -92,7 +92,7 @@ int main() {
 
     //login
 #if DEBUG_CLIENT
-    std::string host = "127.0.0.1:3000"; 
+    std::string host = "127.0.0.1"; 
     std::string port = "3000";
 #else
     std::string host = "onlinecarsimgame-ab2533447e53.herokuapp.com";
@@ -115,11 +115,7 @@ int main() {
         ssl::context ctx{ ssl::context::tlsv12_client };
 
         // boost websockets
-#if DEBUG_CLIENT
-        std::shared_ptr<WebsocketSession> session = WebsocketConn(ioc, ctx, host, "3000", otp, stdf_message);
-#else
-        std::shared_ptr<WebsocketSession> session = WebsocketConn(ioc, ctx, host, "443", otp, stdf_message);
-#endif
+        std::shared_ptr<WebsocketSession> session = WebsocketConn(ioc, ctx, host, port, otp, stdf_message);
 
         if (session)
         {
