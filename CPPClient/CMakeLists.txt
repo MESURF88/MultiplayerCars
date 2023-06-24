@@ -83,6 +83,13 @@ ${CMAKE_CURRENT_SOURCE_DIR}/websocket
 ${CMAKE_CURRENT_SOURCE_DIR}/gui
 )
 
+# include files
+set(inc
+${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.hpp
+${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketConnect.hpp
+${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.hpp
+)
+
 # source files
 set(source
 ${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.cpp
@@ -92,7 +99,7 @@ main.cpp
 )
 
 # Executable
-add_executable(${ProjName} ${includes_dir} ${source})
+add_executable(${ProjName} ${inc} ${source})
 
 target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib ${CPR_LIB} nlohmann_json::nlohmann_json ${Boost_LIBRARIES} 
 ${OPEN_SSL_LIB_PATH}/libssl.lib
@@ -113,7 +120,7 @@ file(COPY "C:/Program\ Files\ (x86)/cpr/include/cpr/cprver.h" DESTINATION "${CMA
 
 add_custom_command(TARGET ${ProjName} POST_BUILD       
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug>/libcurl-d.dll"      # <--this is in-file
+        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release/libcurl.dll>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug/libcurl-d.dll>"      # <--this is in-file
         $<TARGET_FILE_DIR:${ProjName}>)                 # <--this is out-file path
 		
 add_custom_command(TARGET ${ProjName} POST_BUILD       
@@ -138,5 +145,5 @@ add_custom_command(TARGET ${ProjName} POST_BUILD
 		
 #add_custom_command(TARGET ${ProjName} POST_BUILD       
 #    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-#       "${CMAKE_CURRENT_SOURCE_DIR}/target/_deps/raylib-build/raylib/raylib.dll"      # <--this is in-file
+#       "${CMAKE_CURRENT_SOURCE_DIR}/target/_deps/raylib-build/raylib/raylib.dll"      # <--this is in-file TODO make raylib dll
 #        $<TARGET_FILE_DIR:${ProjName}>)                 # <--this is out-file path
