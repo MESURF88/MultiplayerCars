@@ -16,10 +16,13 @@ std::string PostRequestPassword(std::string url, int &statusCode)
     cpr::Response r = cpr::Post(cpr::Url{url},
                       cpr::Body{authJson.dump()}, cpr::Header{{"Content-Type", "application/json"}}, cpr::VerifySsl(false));
     statusCode = r.status_code;
-    nlohmann::json otpJson = nlohmann::json::parse(r.text);
     try
     {
-      otpCapture = otpJson.at("otp");
+        if (r.status_code != 0)
+        {
+            nlohmann::json otpJson = nlohmann::json::parse(r.text);
+            otpCapture = otpJson.at("otp");
+        }
     }
     catch (std::out_of_range& e)
     {

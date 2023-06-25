@@ -31,6 +31,7 @@ public:
     {
         return queue.empty();
     }
+
 private:
     std::mutex mutex;
     std::condition_variable cond_var;

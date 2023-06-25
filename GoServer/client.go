@@ -31,18 +31,31 @@ type Client struct {
 	manager *Manager
 	// egress is used to avoid concurrent writes on the WebSocket
 	egress chan []byte
+
+	// unique identifier for client
+	UUID string
+
+	// color of client
+	color string
 }
 
 // NewClient is used to initialize a new Client with all required values initialized
-func NewClient(conn *websocket.Conn, manager *Manager) *Client {
+func NewClient(conn *websocket.Conn, manager *Manager, uuidStr string, colorStr string) *Client {
 	return &Client{
 		connection: conn,
 		manager:    manager,
 		egress:     make(chan []byte),
+		UUID:       uuidStr,
+		color:      colorStr,
 	}
 }
 
 func (c *Client) sendPeriodicTimeMessages() {
+	defer func() {
+		// Graceful Close the Connection once this
+		// function is done
+		c.manager.removeClient(c)
+	}()
 	log.Println("Client Connected, Begin Transmitting")
 	/*
 	4           => Engine.IO "message" packet type
@@ -51,7 +64,13 @@ func (c *Client) sendPeriodicTimeMessages() {
 	*/
 	var errorFound bool = false
 	for {
-		err := c.connection.WriteMessage(websocket.TextMessage, []byte("[\"time\",\""+time.Now().String()+"\"]"))
+		payload := BroadcastEvent{BEventTimeStampMessage, c.UUID, time.Now().String(), 0, 0, ""}
+		bytepayload, jsonerr := json.Marshal(payload)
+		if jsonerr != nil {
+			errorFound = true
+			log.Printf("error creating json message: %v", jsonerr)
+		}
+		err := c.connection.WriteMessage(websocket.TextMessage, bytepayload)
 		if err != nil {
 			errorFound = true
 			log.Println(err)
@@ -73,6 +92,8 @@ func (c *Client) readMessages() {
 		c.manager.removeClient(c)
 	}()
 	// Set Max Size of Messages in Bytes
+	
+	/*TODO: configure heartbeat ping pong
 	c.connection.SetReadLimit(512)
     // Configure Wait time for Pong response, use Current time + pongWait
 	// This has to be done here to set the first initial timer.
@@ -81,7 +102,7 @@ func (c *Client) readMessages() {
 		return
 	}
 	// Configure how to handle Pong responses
-	c.connection.SetPongHandler(c.pongHandler)
+	c.connection.SetPongHandler(c.pongHandler)*/
 
 	// Loop Forever
 	for {

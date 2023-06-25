@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -51,7 +50,7 @@ type Manager struct {
 	// Could also use Channels to block
 	sync.RWMutex
 	// handlers are functions that are used to handle Events
-	handlers map[string]EventHandler
+	handlers map[int]EventHandler
 	// otps is a map of allowed OTP to accept connections from
 	otps RetentionMap
 }
@@ -60,7 +59,7 @@ type Manager struct {
 func NewManager(ctx context.Context) *Manager {
 	m := &Manager{
 		clients: make(ClientList),
-		handlers: make(map[string]EventHandler),
+		handlers: make(map[int]EventHandler),
 		// Create a new retentionMap that removes Otps older than 5 seconds
 		otps: NewRetentionMap(ctx, 5*time.Second),
 	}
@@ -70,8 +69,35 @@ func NewManager(ctx context.Context) *Manager {
 
 // setupEventHandlers configures and adds all handlers
 func (m *Manager) setupEventHandlers() {
-	m.handlers[EventSendMessage] = func(e Event, c *Client) error {
-		fmt.Println(e)
+	m.handlers[EventPositionMessage] = func(e Event, c *Client) error {
+		var position PositionCartesianCoordEvent
+		if err := json.Unmarshal(e.Payload, &position); err != nil {
+			log.Printf("error marshalling position message: %v", err)
+		} else {
+			// for each client that is not the same uuid as sending client broadcast update of car x y uuid, timestamp and color
+			clientDataPayload := BroadcastEvent{BEventPositionUpdateMessage, c.UUID, time.Now().String(), position.XPos, position.YPos, c.color}
+			bytepayload, jsonerr := json.Marshal(clientDataPayload)
+			if jsonerr != nil {
+				log.Printf("error creating json broadcast message: %v", jsonerr)
+			}
+			m.broadcastUpdateToPeers(c, bytepayload)
+		}
+		return nil
+	}
+	m.handlers[EventColorUpdateMessage] = func(e Event, c *Client) error {
+		var colorMsg ColorUpdateEvent
+		if err := json.Unmarshal(e.Payload, &colorMsg); err != nil {
+			log.Printf("error marshalling color message: %v", err)
+		} else {
+			c.color = colorMsg.Color;
+			// notify clients of color change
+			clientDataPayload := BroadcastEvent{BEventColorUpdateMessage, c.UUID, time.Now().String(), 0, 0, c.color}
+			bytepayload, jsonerr := json.Marshal(clientDataPayload)
+			if jsonerr != nil {
+				log.Printf("error creating json broadcast message: %v", jsonerr)
+			}
+			m.broadcastUpdateToPeers(c, bytepayload)
+		}
 		return nil
 	}
 }
@@ -144,6 +170,22 @@ func (m *Manager) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Grab the the uuid from new client in the Get param
+	uuidStr := r.URL.Query().Get("uuid")
+	if uuidStr == "" {
+		// Tell the user its not authorized
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	// Grab the the color from new client in the Get param
+	colorStr := r.URL.Query().Get("color")
+	if colorStr == "" {
+		// Tell the user its not authorized
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	// Verify OTP is existing
 	if !m.otps.VerifyOTP(otp) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -159,13 +201,13 @@ func (m *Manager) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create New Client
-	client := NewClient(conn, m)
+	client := NewClient(conn, m, uuidStr, colorStr)
 	// Add the newly created client to the manager
 	m.addClient(client)
 	// Start the read / write processes for now
+	m.broadcastNewClientInitPosition(client)
 	go client.sendPeriodicTimeMessages()
-	
-	//TODO: go client.readMessages()
+	go client.readMessages()
 	//TODO: go client.writeMessages()
 }
 
@@ -183,11 +225,39 @@ func (m *Manager) removeClient(client *Client) {
 	m.Lock()
 	defer m.Unlock()
 
-	// Check if Client exists, then deleter it
+	// Check if Client exists, then delete it
 	if _, ok := m.clients[client]; ok {
 		// close connecion
 		client.connection.Close()
 		// remove
 		delete(m.clients, client)
+		// notify other clients
+		// for each client that is not the same uuid as sending client broadcast update of car x y uuid, timestamp and color
+		clientExitPayload := BroadcastEvent{BEventExternalConnectionExitMessage, client.UUID, time.Now().String(), 0, 0, client.color}
+		bytepayload, jsonerr := json.Marshal(clientExitPayload)
+		if jsonerr != nil {
+			log.Printf("error creating json broadcast message: %v", jsonerr)
+		}
+		m.broadcastUpdateToPeers(client, bytepayload)
+	}
+}
+
+func (m *Manager) broadcastNewClientInitPosition(c *Client) {
+	// for each client that is not the same uuid as sending client broadcast new car details x y uuid, timestamp and color
+	clientDataPayload := BroadcastEvent{BEventPositionUpdateMessage, c.UUID, time.Now().String(), 0, 0, c.color}
+	bytepayload, jsonerr := json.Marshal(clientDataPayload)
+	if jsonerr != nil {
+		log.Printf("error creating json broadcast message: %v", jsonerr)
+	}
+	m.broadcastUpdateToPeers(c, bytepayload)
+}
+
+func (m *Manager) broadcastUpdateToPeers(client *Client, bytepayload []byte) {
+	for clientElement, connected := range m.clients {
+		if (clientElement.UUID != client.UUID) && (connected)	{
+			if err := clientElement.connection.WriteMessage(websocket.TextMessage, bytepayload); err != nil {
+				log.Println(err)
+			}
+		}
 	}
 }
