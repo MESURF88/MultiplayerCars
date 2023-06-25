@@ -1,13 +1,17 @@
 #include "websocketSession.hpp"
+#include "uuidGenerator.hpp"
+#include "event.hpp"
 #include <iostream>
+#include <nlohmann/json.hpp>
 
-WebsocketSession::WebsocketSession(net::io_context& ioc, ssl::context& ctx, std::function<void(const std::string&)> readcb):
+WebsocketSession::WebsocketSession(net::io_context& ioc, ssl::context& ctx, std::function<void(const std::string&)> readcb, std::string colorStr):
 m_isConnected(false),
 m_resolver(net::make_strand(ioc)),    // These objects perform our I/O
 m_wss(net::make_strand(ioc), ctx),
-m_readCallback(readcb)
+m_readCallback(readcb),
+m_currColor(colorStr)
 {
-
+    m_uuid = uuid::generate_uuid_v4();
 }
 
 WebsocketSession::~WebsocketSession()
@@ -27,6 +31,66 @@ bool WebsocketSession::connectWebSocket(std::string host, std::string port, std:
     succ = true;
 
 	return succ;
+}
+
+bool WebsocketSession::sendPosition(int X, int Y)
+{
+    bool succ = false;
+    if (m_isConnected && m_wss.is_message_done())
+    {
+        //pack x and y into buffer
+        nlohmann::json positionJson = {
+            {"Type", EventPositionMessage},
+            {"Payload", {
+              {"X", X},
+              {"Y", Y},
+              }
+            }
+        };
+        beast::error_code ec;
+        m_wss.write(net::buffer(positionJson.dump()), ec);
+        if (ec)
+        {
+            std::cout << ec.message() << "\n";
+            std::cout << "error: could not write buffer" << std::endl;
+        }
+    }
+    return succ;
+}
+
+bool WebsocketSession::sendColorUpdate(std::string hexValueColor)
+{
+    bool succ = false;
+    setSessionColor(hexValueColor); // update stored color for online mode
+    if (m_isConnected && m_wss.is_message_done())
+    {
+        //pack x and y into buffer
+        nlohmann::json colorUpdateJson = {
+            {"Type", EventColorUpdateMessage},
+            {"Payload", {
+              {"Color", hexValueColor },
+              }
+            }
+        };
+        beast::error_code ec;
+        m_wss.write(net::buffer(colorUpdateJson.dump()), ec);
+        if (ec)
+        {
+            std::cout << ec.message() << "\n";
+            std::cout << "error: could not write buffer" << std::endl;
+        }
+    }
+    return succ;
+}
+
+void WebsocketSession::setSessionColor(std::string currColor)
+{
+    m_currColor = currColor;
+}
+
+std::string WebsocketSession::getSessionColor()
+{
+    return m_currColor;
 }
 
 void WebsocketSession::workerRead()
@@ -66,7 +130,8 @@ void WebsocketSession::workerRead()
             }));
 
         // Perform the websocket handshake
-        m_wss.handshake(m_host, "/ws?otp=" + m_otp); //query strings
+        std::cout << m_currColor << std::endl;
+        m_wss.handshake(m_host, "/ws?otp=" + m_otp + "&uuid=" + m_uuid + "&color=" + m_currColor); //query parameter strings
 
         m_isConnected = true;
 
@@ -80,9 +145,12 @@ void WebsocketSession::workerRead()
                 std::cout << ec.message() << "\n";
                 std::cout << "error: could not read buffer" << std::endl;
             }
-            std::ostringstream os;
-            os << beast::make_printable(buffer.data());
-            m_readCallback(os.str());
+            else
+            {
+                std::ostringstream os;
+                os << beast::make_printable(buffer.data());
+                m_readCallback(os.str());
+            }
         } while (m_isConnected);
 
     }
@@ -96,5 +164,18 @@ void WebsocketSession::closeConnection()
 {
     m_isConnected = false;
     for (auto& t : m_threadList) t.join();
-    m_wss.close(websocket::close_code::normal);
+    beast::error_code ecCancel;
+    m_wss.next_layer().next_layer().cancel(ecCancel);
+    if (ecCancel)
+    {
+        std::cout << ecCancel.message() << "\n";
+        std::cout << "error: could not cancel websocket" << std::endl;
+    }
+    beast::error_code ecClose;
+    m_wss.close(websocket::close_code::normal, ecClose);
+    if (ecClose)
+    {
+        std::cout << ecClose.message() << "\n";
+        std::cout << "error: could not close websocket" << std::endl;
+    }
 }

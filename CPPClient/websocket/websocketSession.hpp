@@ -23,11 +23,21 @@ using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 class WebsocketSession : public std::enable_shared_from_this<WebsocketSession>
 {
 public:
-    WebsocketSession(net::io_context &ioc, ssl::context& ctx, std::function<void(const std::string&)> readcb);
+    WebsocketSession(net::io_context &ioc, ssl::context& ctx, std::function<void(const std::string&)> readcb, std::string colorStr);
     ~WebsocketSession();
 
     bool connectWebSocket(std::string host, std::string port, std::string otp);
     void closeConnection();
+    bool sendPosition(int X, int Y);
+    bool sendColorUpdate(std::string hexValueColor);
+
+    void setSessionColor(std::string currColor);
+    std::string getSessionColor();
+
+    std::string getClientUUID() const
+    {
+        return m_uuid;
+    }
 
 private:
     void workerRead();
@@ -35,9 +45,11 @@ private:
     tcp::resolver m_resolver;
     std::function<void(const std::string&)> m_readCallback;
     std::vector<std::thread> m_threadList;
+    std::string m_uuid;
     std::string m_host;
     std::string m_port;
     std::string m_otp;
+    std::string m_currColor;
     bool m_isConnected;
 };
 

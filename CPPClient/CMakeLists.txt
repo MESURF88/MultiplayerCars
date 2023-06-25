@@ -90,8 +90,11 @@ set(inc
 ${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketConnect.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketSession.hpp
+${CMAKE_CURRENT_SOURCE_DIR}/gui/event.hpp
+${CMAKE_CURRENT_SOURCE_DIR}/gui/uuidGenerator.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/threadSafeQueue.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.hpp
+${CMAKE_CURRENT_SOURCE_DIR}/gui/carClass.hpp
 )
 
 # source files
@@ -100,6 +103,7 @@ ${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketConnect.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketSession.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.cpp
+${CMAKE_CURRENT_SOURCE_DIR}/gui/carClass.cpp
 main.cpp
 )
 
