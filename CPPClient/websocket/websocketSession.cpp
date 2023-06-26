@@ -130,7 +130,6 @@ void WebsocketSession::workerRead()
             }));
 
         // Perform the websocket handshake
-        std::cout << m_currColor << std::endl;
         m_wss.handshake(m_host, "/ws?otp=" + m_otp + "&uuid=" + m_uuid + "&color=" + m_currColor); //query parameter strings
 
         m_isConnected = true;
