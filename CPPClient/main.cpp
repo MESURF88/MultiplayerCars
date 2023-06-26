@@ -1,6 +1,3 @@
-#ifndef WIN32
-#include "json.hpp" //nlohmann::json cannot build in MSVC
-#endif
 #include "threadSafeQueue.hpp"
 #include "postRequest.hpp"
 #include "websocketConnect.hpp"

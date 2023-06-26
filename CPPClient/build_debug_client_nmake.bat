@@ -6,7 +6,7 @@ SET F=%~dp0\nmakebuilddbg
 IF EXIST %F% RMDIR /S /Q %F%
 MKDIR %F%
 CD nmakebuilddbg
-cmake -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Debug .. && cmake -B .
+cmake -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Debug -DDEBUGLOCAL=1 .. && cmake -B .
 nmake
 cd ..
 xcopy /y .env %F%

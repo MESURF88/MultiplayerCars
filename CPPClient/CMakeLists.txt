@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(DEBUGLOCAL EQUAL 1)
+add_compile_definitions(DEBUG_CLIENT)
+endif()
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Debug")
     set(CMAKE_BINARY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/targetdbg")
@@ -27,9 +31,23 @@ if (MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
 endif(MSVC)
 
-set(OPEN_SSL_INCLUDE_DIR "C:/Program\ Files/OpenSSL-Win64/include")
+if(Boost_FOUND)   
+    message("Boost 1.82 found")
+endif()
 
-set(OPEN_SSL_LIB_PATH "C:/Program\ Files/OpenSSL-Win64/lib")
+find_package(OpenSSL)
+
+if (OPENSSL_FOUND)
+message("OpenSSL found")
+message("${OPENSSL_INCLUDE_DIR}")
+else()
+if (WIN32)
+message("OpenSSL not Found on Windows, attempt to manually set paths")
+set(OPENSSL_INCLUDE_DIR "C:/Program\ Files/OpenSSL-Win64/include")
+else()
+message("OpenSSL not Found, attempt to reinstall the package for openssl")
+endif()
+endif()
 
 # boost (websockets)
 set(Boost_USE_STATIC_LIBS        ON)  # only find static libs
@@ -113,8 +131,8 @@ add_executable(${ProjName} ${inc} ${source})
 target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib 
 ${CPR_LIB} 
 nlohmann_json::nlohmann_json 
-${OPEN_SSL_LIB_PATH}/libssl.lib
-${OPEN_SSL_LIB_PATH}/libcrypto.lib
+${OPENSSL_INCLUDE_DIR}/../lib/libssl.lib
+${OPENSSL_INCLUDE_DIR}/../lib/libcrypto.lib
 #${Boost_LIBRARIES} 
 "$<$<CONFIG:Debug>:${Boost_INCLUDE_DIRS}/../../lib/libboost_date_time-vc142-mt-gd-x64-1_82.lib>"
 "$<$<CONFIG:Debug>:${Boost_INCLUDE_DIRS}/../../lib/libboost_system-vc142-mt-gd-x64-1_82.lib>"
@@ -134,26 +152,29 @@ target_include_directories(${ProjName} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/cpr/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/curl/include"
     ${Boost_INCLUDE_DIRS}
-    ${OPEN_SSL_INCLUDE_DIR}
+    ${OPENSSL_INCLUDE_DIR}
 )
 target_compile_features(${ProjName} PRIVATE cxx_std_17)
 
+
+if (WIN32)
 file(COPY "C:/Program\ Files\ (x86)/cpr/include/cpr/cprver.h" DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/cpr/include/cpr")
+endif() # TODO: linux support
 
 add_custom_command(TARGET ${ProjName} POST_BUILD       
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release/libcurl.dll>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug/libcurl-d.dll>"      # <--this is in-file
-        $<TARGET_FILE_DIR:${ProjName}>)                 # <--this is out-file path
+        $<TARGET_FILE_DIR:${ProjName}>)
 		
 add_custom_command(TARGET ${ProjName} POST_BUILD       
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug>/cpr.dll"      # <--this is in-file
-        $<TARGET_FILE_DIR:${ProjName}>)                 # <--this is out-file path
+        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug>/cpr.dll"
+        $<TARGET_FILE_DIR:${ProjName}>)
 
 add_custom_command(TARGET ${ProjName} POST_BUILD       
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug>/zlib.dll"      # <--this is in-file
-        $<TARGET_FILE_DIR:${ProjName}>)                 # <--this is out-file path
+        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug>/zlib.dll"
+        $<TARGET_FILE_DIR:${ProjName}>)
 
 add_custom_command(TARGET ${ProjName} POST_BUILD       
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -164,6 +185,16 @@ add_custom_command(TARGET ${ProjName} POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		"${CMAKE_CURRENT_SOURCE_DIR}/.env"
 		$<TARGET_FILE_DIR:${ProjName}>) 
+		
+add_custom_command(TARGET ${ProjName} POST_BUILD       
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${OPENSSL_INCLUDE_DIR}/../libcrypto-1_1-x64.dll"
+		$<TARGET_FILE_DIR:${ProjName}>) 
+		
+add_custom_command(TARGET ${ProjName} POST_BUILD       
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${OPENSSL_INCLUDE_DIR}/../libssl-1_1-x64.dll"
+		$<TARGET_FILE_DIR:${ProjName}>)
 		
 #add_custom_command(TARGET ${ProjName} POST_BUILD       
 #    COMMAND ${CMAKE_COMMAND} -E copy_if_different

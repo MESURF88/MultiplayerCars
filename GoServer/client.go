@@ -64,7 +64,7 @@ func (c *Client) sendPeriodicTimeMessages() {
 	*/
 	var errorFound bool = false
 	for {
-		payload := BroadcastEvent{BEventTimeStampMessage, c.UUID, time.Now().String(), 0, 0, ""}
+		payload := BroadcastEvent{BEventTimeStampMessage, c.UUID, time.Now().Format(time.RFC3339Nano), 0, 0, ""}
 		bytepayload, jsonerr := json.Marshal(payload)
 		if jsonerr != nil {
 			errorFound = true
