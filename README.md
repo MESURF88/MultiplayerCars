@@ -10,13 +10,13 @@ contains the Go websocket code to communicates with the clients
 contains the c++ code for boost cpr (curlib) for websockets and raylab library to create graphics
 ```
 
-# install Go
+# install Go windows
 
 ```
 https://go.dev/doc/install
 ```
 
-# install Perl
+# install Perl windows
 
 ```
 need to install perl x64
@@ -26,7 +26,7 @@ It should place the exe in
 C:/Strawberry/perl/bin/perl.exe
 ```
 
-# installing for client
+# installing for client windows
 
 ```
 
@@ -182,14 +182,14 @@ add C:\Program Files (x86)\cpr\lib to the user environmental variable PATH
 add C:\Program Files (x86)\cpr\include to the user environmental variable PATH
 ```
 
-# building client
+# building client windows
 
 ```
 once all the installation is done, or a source file for the client has been modified run either
 build_debug_client_nmake.bat
 or
 build_default_debug_client.bat
-to build an executable in nmakebuild or a solution in build respectively
+to build an executable in nmakebuilddbg or a solution in builddbg respectively
 
 to build release, must first run the setup_release_dependencies.bat before building with the corresponding scripts,
 build_release_client_nmake.bat
@@ -197,14 +197,14 @@ or
 build_default_release_client.bat
 to build an executable in nmakebuild or a solution in build respectively
 
-if need to rebuild the dependencies (curl, cpr, nlohmann/json), the run the clean_dependencies.bat
+if need to rebuild the dependencies (curl, cpr, nlohmann/json), then run the clean_dependencies.bat before the setup_debug_dependencies or setup_release_dependencies script
 
 NOTE: if cmakecache error when running scripts, delete the target (targetdbg for Debug) (target for Release) folder in CPPClient
-and re run build script
+and re run build script. This occurs when switching compilers or generators.
 
 ```
 
-# running client and server locally
+# running client and server locally windows
 
 ```
 first run server in terminal:
@@ -216,12 +216,53 @@ DEBUG_CLIENT
 this can be done in visual studio Project Settings
 for the nmake build script, it will compile the debug executable with the DEBUG_CLIENT definition automatically.
 
-in another terminal run client (for nmake builds)
+in the root directory, in another terminal run client (for nmake builds)
 .\CPPClient\nmakebuild\carclient.exe
 (for visual studio builds)
 .\CPPClient\build\carclient.exe
 
 or use visual studio if (default builds)
+```
+
+
+# installing for client linux
+
+```
+run the setup_dependencies.sh script in CPPClient
+```
+
+# building client linux
+
+```
+once all the installation is done, or a source file for the client has been modified run either
+build_default_debug_client.sh
+to build an executable in builddbg
+
+to build release, run
+build_default_debug_client.sh
+to build an executable in build
+
+if need to rebuild the dependencies (curl, cpr, nlohmann/json), the run the clean_dependencies.sh
+
+NOTE: if cmakecache error when running scripts, delete the target (targetdbg for Debug) (target for Release) folder in CPPClient
+and re run build script
+
+```
+
+# running client and server locally linux
+
+```
+first run server in terminal:
+cd GoServer
+go run .
+
+in the root directory, run the debug client from a terminal use the following two commands
+export LD_LIBRARY_PATH=/usr/local/lib
+./CPPClient/builddbg/carclient
+
+likewise for release (this will connect to the online server)
+export LD_LIBRARY_PATH=/usr/local/lib
+./CPPClient/build/carclient
 ```
 
 # testing server
