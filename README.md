@@ -211,6 +211,11 @@ first run server in terminal:
 cd .\GoServer
 go run .
 
+For the client it must be compiled with the preprocessor definition:
+DEBUG_CLIENT
+this can be done in visual studio Project Settings
+for the nmake build script, it will compile the debug executable with the DEBUG_CLIENT definition automatically.
+
 in another terminal run client (for nmake builds)
 .\CPPClient\nmakebuild\carclient.exe
 (for visual studio builds)
