@@ -128,12 +128,12 @@ main.cpp
 # Executable
 add_executable(${ProjName} ${inc} ${source})
 
+if(WIN32)
 target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib 
 ${CPR_LIB} 
 nlohmann_json::nlohmann_json 
 ${OPENSSL_INCLUDE_DIR}/../lib/libssl.lib
 ${OPENSSL_INCLUDE_DIR}/../lib/libcrypto.lib
-#${Boost_LIBRARIES} 
 "$<$<CONFIG:Debug>:${Boost_INCLUDE_DIRS}/../../lib/libboost_date_time-vc142-mt-gd-x64-1_82.lib>"
 "$<$<CONFIG:Debug>:${Boost_INCLUDE_DIRS}/../../lib/libboost_system-vc142-mt-gd-x64-1_82.lib>"
 "$<$<CONFIG:Debug>:${Boost_INCLUDE_DIRS}/../../lib/libboost_random-vc142-mt-gd-x64-1_82.lib>"
@@ -145,6 +145,15 @@ ${OPENSSL_INCLUDE_DIR}/../lib/libcrypto.lib
 "$<$<CONFIG:Release>:${Boost_INCLUDE_DIRS}/../../lib/libboost_thread-vc142-mt-x64-1_82.lib>"
 "$<$<CONFIG:Release>:${Boost_INCLUDE_DIRS}/../../lib/libboost_chrono-vc142-mt-x64-1_82.lib>"
 )
+else()
+target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib 
+${CPR_LIB} 
+nlohmann_json::nlohmann_json 
+libssl.a
+libcrypto.a
+${Boost_LIBRARIES}
+)
+endif()
 
 target_include_directories(${ProjName} PRIVATE
     ${includes_dir}
@@ -159,11 +168,12 @@ target_compile_features(${ProjName} PRIVATE cxx_std_17)
 
 if (WIN32)
 file(COPY "C:/Program\ Files\ (x86)/cpr/include/cpr/cprver.h" DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/cpr/include/cpr")
-endif() # TODO: linux support
+endif()
 
+if (WIN32)
 add_custom_command(TARGET ${ProjName} POST_BUILD       
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release/libcurl.dll>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug/libcurl-d.dll>"      # <--this is in-file
+        "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release/libcurl.dll>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug/libcurl-d.dll>"
         $<TARGET_FILE_DIR:${ProjName}>)
 		
 add_custom_command(TARGET ${ProjName} POST_BUILD       
@@ -175,16 +185,6 @@ add_custom_command(TARGET ${ProjName} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/cpr/$<$<CONFIG:Release>:cpr-build/bin/Release>$<$<CONFIG:Debug>:cpr-builddbg/bin/Debug>/zlib.dll"
         $<TARGET_FILE_DIR:${ProjName}>)
-
-add_custom_command(TARGET ${ProjName} POST_BUILD       
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/server.crt"
-        $<TARGET_FILE_DIR:${ProjName}>) 
-		
-add_custom_command(TARGET ${ProjName} POST_BUILD       
-	COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		"${CMAKE_CURRENT_SOURCE_DIR}/.env"
-		$<TARGET_FILE_DIR:${ProjName}>) 
 		
 add_custom_command(TARGET ${ProjName} POST_BUILD       
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -195,6 +195,17 @@ add_custom_command(TARGET ${ProjName} POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		"${OPENSSL_INCLUDE_DIR}/../libssl-1_1-x64.dll"
 		$<TARGET_FILE_DIR:${ProjName}>)
+endif()
+
+add_custom_command(TARGET ${ProjName} POST_BUILD       
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/server.crt"
+        $<TARGET_FILE_DIR:${ProjName}>) 
+		
+add_custom_command(TARGET ${ProjName} POST_BUILD       
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${CMAKE_CURRENT_SOURCE_DIR}/.env"
+		$<TARGET_FILE_DIR:${ProjName}>) 
 		
 #add_custom_command(TARGET ${ProjName} POST_BUILD       
 #    COMMAND ${CMAKE_COMMAND} -E copy_if_different
