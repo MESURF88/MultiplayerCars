@@ -3,6 +3,28 @@
 #include <string>
 #include <map>
 
+class TextContext
+{
+public:
+	TextContext() {
+		m_leftSide = false;
+		m_colorStr = "ffffff";
+		m_text = "";
+		m_timestamp = "";
+	}
+	TextContext(bool leftSide, std::string colorStr, std::string text, std::string timestamp)
+	{
+		m_leftSide = leftSide;
+		m_colorStr = colorStr;
+		m_text = text;
+		m_timestamp = timestamp;
+	}
+	bool m_leftSide;
+	std::string m_colorStr;
+	std::string m_text;
+	std::string m_timestamp;
+};
+
 class ColorHexMap
 {
 public:
@@ -46,18 +68,30 @@ void windowEndDrawing();
 void windowDrawBackground();
 void drawTextTestBox(std::string testStr);
 void drawChatBoxContainer();
+void drawChatSendBox(bool mouseOnText, const char* text);
+void drawSendTextButton();
+void drawChatSendBoxBlinkingUnderscore(const int& framesCounter, const char* tex);
 void drawDefaultSquaresColor();
+void drawTextLine(int idx, const TextContext& context);
 void drawEscButton();
 void windowCloseWindow();
 bool windowIsKeyPressedUp();
 bool windowIsKeyPressedDown();
 bool windowIsKeyPressedLeft();
 bool windowIsKeyPressedRight();
+bool windowIsKeyPressedBackSpace();
+bool windowIsKeyReleasedEnter();
 bool windowIsKeyPressed(int key);
+bool windowIsKeyReleased(int key);
 bool windowIsMouseButtonPressed();
+int windowGetCharPressed();
 std::map<int, ColorHexMap> windowGetColorSelectionMap();
 int windowIsMouseInColorSelection();
 bool windowIsMouseInEscape();
+bool windowIsMouseCollidesChatBox();
+bool windowIsMouseCollidesChatSendButton();
+void windowSetMouseCursorIBeam();
+void windowSetMouseCursorDefault();
 
 
 #endif // _WINDOWCONTEXT_

@@ -4,5 +4,5 @@
 #include <string>
 #include <functional>
 
-std::shared_ptr<WebsocketSession> WebsocketConn(net::io_context& ioc, ssl::context& ctx, std::string host, std::string port, std::string otp, std::function<void(const std::string&)>, std::string carColorStr);
+std::shared_ptr<WebsocketSession> WebsocketConn(net::io_context& ioc, ssl::context& ctx, std::string host, std::string port, std::string otp, std::function<void(const std::string&)>, std::string colorStr);
 #endif // _WEBSOCKETCONNECT_

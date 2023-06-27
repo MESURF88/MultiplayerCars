@@ -18,7 +18,7 @@ namespace net = boost::asio;            // from <boost/asio.hpp>
 namespace ssl = boost::asio::ssl;       // from <boost/asio/ssl.hpp>
 using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 
-std::shared_ptr<WebsocketSession> WebsocketConn(net::io_context& ioc, ssl::context& ctx, std::string host, std::string port, std::string otp, std::function<void(const std::string&)> readcb, std::string carColorStr)
+std::shared_ptr<WebsocketSession> WebsocketConn(net::io_context& ioc, ssl::context& ctx, std::string host, std::string port, std::string otp, std::function<void(const std::string&)> readcb, std::string colorStr)
 {
     std::cout << "now connecting to " << host << " " << port << std::endl;
     std::ifstream envAuthCert;
@@ -61,7 +61,7 @@ std::shared_ptr<WebsocketSession> WebsocketConn(net::io_context& ioc, ssl::conte
     if (ec)
         std::cout << "error: could not assign authority" << std::endl;
 
-    std::shared_ptr<WebsocketSession> session = std::make_shared<WebsocketSession>(ioc, ctx, readcb, carColorStr);
+    std::shared_ptr<WebsocketSession> session = std::make_shared<WebsocketSession>(ioc, ctx, readcb, colorStr);
     bool succ = session->connectWebSocket(host, port, otp);
    
     if (succ)

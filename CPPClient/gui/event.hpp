@@ -8,12 +8,14 @@ enum BEventType
 	BEventPositionUpdateMessage,
 	BEventColorUpdateMessage,
 	BEventExternalConnectionExitMessage,
+	BEventTextUpdateMessage,
 };
 
 enum ClientUpdateEventType
 {
 	EventPositionMessage = 0,
 	EventColorUpdateMessage,
+	EventTextUpdateMessage,
 
 };
 

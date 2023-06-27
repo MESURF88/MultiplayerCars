@@ -30,6 +30,7 @@ public:
     void closeConnection();
     bool sendPosition(int X, int Y);
     bool sendColorUpdate(std::string hexValueColor);
+    bool sendTextMessage(std::string toUUID, std::string colorStr, std::string text, bool global = true);
 
     void setSessionColor(std::string currColor);
     std::string getSessionColor();

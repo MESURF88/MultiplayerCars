@@ -83,6 +83,38 @@ bool WebsocketSession::sendColorUpdate(std::string hexValueColor)
     return succ;
 }
 
+bool WebsocketSession::sendTextMessage(std::string toUUID, std::string colorStr, std::string text, bool global)
+{
+    bool succ = false;
+    if (colorStr == "")
+    {
+        colorStr = m_currColor;
+    }
+    if (m_isConnected && m_wss.is_message_done())
+    {
+        //pack x and y into buffer
+        nlohmann::json colorUpdateJson = {
+            {"Type", EventTextUpdateMessage},
+            {"Payload", {
+                {"FromUUID", getClientUUID() },
+                {"ToUUID", toUUID },
+                {"Color", colorStr },
+                {"Text", text },
+                {"Global", global },
+              }
+            }
+        };
+        beast::error_code ec;
+        m_wss.write(net::buffer(colorUpdateJson.dump()), ec);
+        if (ec)
+        {
+            std::cout << ec.message() << "\n";
+            std::cout << "error: could not write buffer" << std::endl;
+        }
+    }
+    return succ;
+}
+
 void WebsocketSession::setSessionColor(std::string currColor)
 {
     m_currColor = currColor;
