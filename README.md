@@ -265,6 +265,16 @@ export LD_LIBRARY_PATH=/usr/local/lib
 ./CPPClient/build/carclient
 ```
 
+# certificates for running client and server
+```
+the GoServer Folder needs a Folder named keys containing
+- server.crt
+- server.key
+the CPPClient needs the following
+- .env
+- server.crt
+```
+
 # testing server
 ```
 use piesockettester extension for google chrome
