@@ -7,6 +7,7 @@ const (
 	// EventPositionMessage is the event name for position IMPORTANT MUST MATCH CLIENT ENUM
 	EventPositionMessage = 0
 	EventColorUpdateMessage = 1
+	EventTextUpdateMessage = 2
 )
 
 // Event is the Messages sent over the websocket
@@ -29,6 +30,7 @@ const (
 	BEventPositionUpdateMessage = 1
 	BEventColorUpdateMessage = 2
 	BEventExternalConnectionExitMessage = 3
+	BEventTextUpdateMessage = 4
 )
 
 type BroadcastEvent struct {
@@ -40,6 +42,16 @@ type BroadcastEvent struct {
 	Color string `json:"Color"`
 }
 
+type BroadcastTextMessageEvent struct {
+	BType int `json:"Type"`
+	FromUUID string `json:"FromUUID"`
+	ToUUID   string `json:"ToUUID"`
+	Color    string `json:"Color"`
+	Text     string `json:"Text"`
+	TimeStamp string `json:"TimeStamp"`
+	Global   bool   `json:"Global"`
+}
+
 type PositionCartesianCoordEvent struct {
 	XPos int `json:"X"`
 	YPos int `json:"Y"`
@@ -49,9 +61,10 @@ type ColorUpdateEvent struct {
 	Color string `json:"Color"`
 }
 
-// SendMessageEvent is the payload sent in the
-// send_message event
-type SendMessageEvent struct {
-	Message string `json:"message"`
-	From    string `json:"from"`
+type TextUpdateEvent struct {
+	FromUUID string `json:"FromUUID"`
+	ToUUID   string `json:"ToUUID"`
+	Color    string `json:"Color"`
+	Text     string `json:"Text"`
+	Global   bool   `json:"Global"`
 }

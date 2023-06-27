@@ -75,12 +75,12 @@ func (m *Manager) setupEventHandlers() {
 			log.Printf("error marshalling position message: %v", err)
 		} else {
 			// for each client that is not the same uuid as sending client broadcast update of car x y uuid, timestamp and color
-			clientDataPayload := BroadcastEvent{BEventPositionUpdateMessage, c.UUID, time.Now().String(), position.XPos, position.YPos, c.color}
+			clientDataPayload := BroadcastEvent{BEventPositionUpdateMessage, c.UUID, time.Now().Format(time.RFC3339Nano), position.XPos, position.YPos, c.color}
 			bytepayload, jsonerr := json.Marshal(clientDataPayload)
 			if jsonerr != nil {
 				log.Printf("error creating json broadcast message: %v", jsonerr)
 			}
-			m.broadcastUpdateToPeers(c, bytepayload)
+			m.broadcastUpdateToPeers(c.UUID, bytepayload)
 		}
 		return nil
 	}
@@ -91,12 +91,31 @@ func (m *Manager) setupEventHandlers() {
 		} else {
 			c.color = colorMsg.Color;
 			// notify clients of color change
-			clientDataPayload := BroadcastEvent{BEventColorUpdateMessage, c.UUID, time.Now().String(), 0, 0, c.color}
+			clientDataPayload := BroadcastEvent{BEventColorUpdateMessage, c.UUID, time.Now().Format(time.RFC3339Nano), 0, 0, c.color}
 			bytepayload, jsonerr := json.Marshal(clientDataPayload)
 			if jsonerr != nil {
 				log.Printf("error creating json broadcast message: %v", jsonerr)
 			}
-			m.broadcastUpdateToPeers(c, bytepayload)
+			m.broadcastUpdateToPeers(c.UUID, bytepayload)
+		}
+		return nil
+	}
+	m.handlers[EventTextUpdateMessage] = func(e Event, c *Client) error {
+		var textMsg TextUpdateEvent
+		if err := json.Unmarshal(e.Payload, &textMsg); err != nil {
+			log.Printf("error marshalling text message: %v", err)
+		} else {
+			// notify clients of color change
+			clientDataPayload := BroadcastTextMessageEvent{BEventTextUpdateMessage, textMsg.FromUUID, textMsg.ToUUID, textMsg.Color, textMsg.Text, time.Now().Format(time.RFC3339Nano), textMsg.Global}
+			bytepayload, jsonerr := json.Marshal(clientDataPayload)
+			if jsonerr != nil {
+				log.Printf("error creating json broadcast message: %v", jsonerr)
+			}
+			if textMsg.Global == true {
+				m.broadcastUpdateToPeers(c.UUID, bytepayload)
+			} else {
+				m.sendUpdateToPeer(textMsg.ToUUID, bytepayload)
+			}
 		}
 		return nil
 	}
@@ -238,7 +257,7 @@ func (m *Manager) removeClient(client *Client) {
 		if jsonerr != nil {
 			log.Printf("error creating json broadcast message: %v", jsonerr)
 		}
-		m.broadcastUpdateToPeers(client, bytepayload)
+		m.broadcastUpdateToPeers(client.UUID, bytepayload)
 	}
 }
 
@@ -249,12 +268,22 @@ func (m *Manager) broadcastNewClientInitPosition(c *Client) {
 	if jsonerr != nil {
 		log.Printf("error creating json broadcast message: %v", jsonerr)
 	}
-	m.broadcastUpdateToPeers(c, bytepayload)
+	m.broadcastUpdateToPeers(c.UUID, bytepayload)
 }
 
-func (m *Manager) broadcastUpdateToPeers(client *Client, bytepayload []byte) {
+func (m *Manager) broadcastUpdateToPeers(sendingUUID string, bytepayload []byte) {
 	for clientElement, connected := range m.clients {
-		if (clientElement.UUID != client.UUID) && (connected)	{
+		if (clientElement.UUID != sendingUUID) && (connected)	{
+			if err := clientElement.connection.WriteMessage(websocket.TextMessage, bytepayload); err != nil {
+				log.Println(err)
+			}
+		}
+	}
+}
+
+func (m *Manager) sendUpdateToPeer(toUUID string, bytepayload []byte) {
+	for clientElement, connected := range m.clients {
+		if (clientElement.UUID == toUUID) && (connected)	{
 			if err := clientElement.connection.WriteMessage(websocket.TextMessage, bytepayload); err != nil {
 				log.Println(err)
 			}

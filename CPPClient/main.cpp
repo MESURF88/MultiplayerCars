@@ -12,6 +12,8 @@
 #include <nlohmann/json.hpp>
 
 // Globals
+static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
+static constexpr int MAX_INPUT_CHARS = 105;
 ThreadSafeQueue<std::string> wsUpdatedJsonQueue;
 ThreadSafeQueue<std::string> guiJsonQueue;
 std::atomic<bool> g_gameRunning = false;
@@ -160,8 +162,19 @@ int main() {
             // Initialize gui variables here
             //----------------------------------------------------------------------------------
             bool move = false;
+            bool text = false;
+            bool mouseOnText = false;
+            char textmessage[MAX_INPUT_CHARS + 1] = "\0";      // NOTE: One extra space required for null terminator char '\0'
+            int framesCounter = 0;
+            int letterCount = 0;
             std::string gui_timestamp;
             std::map<std::string, CarContext> gui_externalplayers;
+            std::deque<TextContext> gui_textmessagesdisplay;
+            // pre-fill blank text message deque
+            for (int i = 0; i < MAX_DISPLAYED_TEXT_MESSAGES; i++)
+            {
+                gui_textmessagesdisplay.push_back(TextContext(false, "", "", ""));
+            }
             int g_X = 0;
             int g_Y = 0;
             //----------------------------------------------------------------------------------
@@ -222,6 +235,21 @@ int main() {
                                     if (gui_externalplayers.count(uuidOfPlayerCar))
                                     {
                                         gui_externalplayers.erase(uuidOfPlayerCar);
+                                    }
+                                }
+                                break;
+                                case BEventType::BEventTextUpdateMessage:
+                                {
+                                    std::string uuidOfSender = parsedJson.at("FromUUID");
+                                    // sender is not current player
+                                    if (uuidOfSender != session->getClientUUID())
+                                    {
+                                        // only display last 5 messages for now...
+                                        std::string senderColor = parsedJson.at("Color");
+                                        std::string senderText = parsedJson.at("Text");
+                                        std::string senderTimeStamp = parsedJson.at("TimeStamp");
+                                        gui_textmessagesdisplay.pop_back();
+                                        gui_textmessagesdisplay.push_front(TextContext(true, senderColor, senderText, senderTimeStamp));
                                     }
                                 }
                                 break;
@@ -294,6 +322,21 @@ int main() {
                     default:
                         break;
                     }
+                    if (windowIsMouseCollidesChatBox())
+                    {
+                        mouseOnText = true;
+                    }
+                    else
+                    {
+                        mouseOnText = false;
+                    }
+                    if (windowIsMouseCollidesChatSendButton())
+                    {
+                        text = true;
+                        // append locally first the broadcast
+                        gui_textmessagesdisplay.pop_back();
+                        gui_textmessagesdisplay.push_front(TextContext(false, getCarColorString(), std::string(textmessage), gui_timestamp));
+                    }
                     if (windowIsMouseInEscape())
                     {
                         g_gameRunning = false;
@@ -303,6 +346,54 @@ int main() {
                 {
                     session->sendPosition(g_X, g_Y);
                     move = false;
+                }
+                // text handling
+                if (mouseOnText)
+                {
+                    // Set the window's cursor to the I-Beam
+                    windowSetMouseCursorIBeam();
+
+                    // Get char pressed (unicode character) on the queue
+                    int key = windowGetCharPressed();
+
+                    // Check if more characters have been pressed on the same frame
+                    while (key > 0)
+                    {
+                        // NOTE: Only allow keys in range [32..125]
+                        if ((key >= 32) && (key <= 125) && (letterCount < MAX_INPUT_CHARS))
+                        {
+                            textmessage[letterCount] = (char)key;
+                            textmessage[letterCount + 1] = '\0'; // Add null terminator at the end of the string.
+                            letterCount++;
+                        }
+
+                        key = windowGetCharPressed();  // Check next character in the queue
+                    }
+
+                    if (windowIsKeyPressedBackSpace())
+                    {
+                        letterCount--;
+                        if (letterCount < 0) letterCount = 0;
+                        textmessage[letterCount] = '\0';
+                    }
+                    if (windowIsKeyReleasedEnter())
+                    {
+                        text = true;
+                        // append locally first the broadcast
+                        gui_textmessagesdisplay.pop_back();
+                        gui_textmessagesdisplay.push_front(TextContext(false, getCarColorString(), std::string(textmessage), gui_timestamp));
+                    }
+                }
+                else
+                {
+                    windowSetMouseCursorDefault();
+                }
+                if (mouseOnText) framesCounter++;
+                else framesCounter = 0;
+                if (text)
+                {
+                    session->sendTextMessage("", "", std::string(textmessage)); // global is true, default current color
+                    text = false;
                 }
                 // Draw
                 //----------------------------------------------------------------------------------
@@ -316,6 +407,22 @@ int main() {
                 }
                 drawTextTestBox(gui_timestamp);
                 drawChatBoxContainer();
+                drawChatSendBox(mouseOnText, textmessage);
+                drawSendTextButton();
+                if (mouseOnText)
+                {
+                    if (letterCount < MAX_INPUT_CHARS)
+                    {
+                        // Draw blinking underscore char
+                        drawChatSendBoxBlinkingUnderscore(framesCounter, textmessage);
+                    }
+                }
+                int idx = 0;
+                for (const TextContext &context: gui_textmessagesdisplay)
+                {
+                    drawTextLine(idx, context);
+                    idx++;
+                }
                 drawEscButton();
                 windowEndDrawing();
                 //----------------------------------------------------------------------------------

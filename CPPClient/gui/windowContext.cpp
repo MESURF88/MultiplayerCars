@@ -15,10 +15,15 @@ static constexpr int escBoxHeight = 40;
 static constexpr int escBoxX = screenWidth - escBoxWidth - 5;
 static constexpr int escBoxY = screenHeight - escBoxHeight - 5;
 static constexpr int chatPanelHeight = 160;
+static constexpr int chatSendBoxHeight = 25;
+static constexpr int chatSendBoxWidth = 1500;
 
 static const raylib::Color defaultMainTextColor = raylib::Color::LightGray();
 // the one and only window
 raylib::Window window(screenWidth, screenHeight, "car sim game alpha");
+
+static const Rectangle chatSendBoxRect = { 0, screenHeight - menuPanelHeight - chatSendBoxHeight, chatSendBoxWidth, chatSendBoxHeight };
+static const Rectangle chatSendButtonRect = { chatSendBoxWidth-1, screenHeight - menuPanelHeight - chatSendBoxHeight, 100, chatSendBoxHeight };
 
 static const std::map<int, ColorHexMap> colorEnumToHexValue = {
 	{colorSelectionType::BLUECOLOR, ColorHexMap(7991807, "0079F1")},
@@ -121,6 +126,24 @@ void drawChatBoxContainer()
 	DrawLine(0, screenHeight - menuPanelHeight - chatPanelHeight, screenWidth, screenHeight - menuPanelHeight - chatPanelHeight, defaultMainTextColor);
 }
 
+void drawChatSendBox(bool mouseOnText, const char *text)
+{
+	if(mouseOnText) DrawRectangleLines((int)chatSendBoxRect.x, (int)chatSendBoxRect.y, (int)chatSendBoxRect.width, (int)chatSendBoxRect.height, BLACK);
+	else DrawRectangleLines((int)chatSendBoxRect.x, (int)chatSendBoxRect.y, (int)chatSendBoxRect.width, (int)chatSendBoxRect.height, LIGHTGRAY);
+	DrawText(text, (int)chatSendBoxRect.x + 5, (int)chatSendBoxRect.y + 5, 20, MAROON);
+}
+
+void drawSendTextButton()
+{
+	DrawRectangleLines((int)chatSendButtonRect.x, (int)chatSendButtonRect.y, (int)chatSendButtonRect.width, (int)chatSendButtonRect.height, BLACK);
+	defaultMainTextColor.DrawText("SEND", chatSendButtonRect.x + 25, chatSendButtonRect.y + 5, 20);
+}
+
+void drawChatSendBoxBlinkingUnderscore(const int& framesCounter, const char * text)
+{
+	if (((framesCounter / 20) % 2) == 0) DrawText("_", (int)chatSendBoxRect.x + 5 + MeasureText(text, 20), (int)chatSendBoxRect.y + 5, 20, MAROON);
+}
+
 void drawDefaultSquaresColor()
 {
 	int initX = colorBoxX;
@@ -129,6 +152,35 @@ void drawDefaultSquaresColor()
 		DrawRectangle(initX, colorBoxY, colorSquareLength, colorBoxHeight, GetColor(colorEnumToHexValue.at(color).hexValue));
 		initX += colorSquareLength;
 	}
+}
+
+void drawTextLine(int idx, const TextContext& context)
+{
+	// idx 0 is the bottom
+	int y = screenHeight - menuPanelHeight - chatPanelHeight + (100 - (25 * idx)) + 1; // plus 1 space
+	if (colorStringToHexValue.count(context.m_colorStr))
+	{
+		if (context.m_leftSide)
+		{
+			DrawRectangle(125, y, 23, 23, GetColor(colorStringToHexValue.at(context.m_colorStr)));
+		}
+		else
+		{
+			DrawRectangle(1125, y, 23, 23, GetColor(colorStringToHexValue.at(context.m_colorStr)));
+		}
+	}
+	int sizeUnits = MeasureText(context.m_text.c_str(), 20) - 900;
+	if (sizeUnits < 0)
+	{
+		defaultMainTextColor.DrawText(context.m_text.c_str(), 200, y + 2, 20);
+	}
+	else
+	{
+		// truncate
+		std::string truncText = context.m_text.substr(0, context.m_text.length() - sizeUnits/ MeasureText("A", 20) - 1); // 1 padding
+		defaultMainTextColor.DrawText(truncText + "...", 200, y + 2, 20);
+	}
+	defaultMainTextColor.DrawText(context.m_timestamp.c_str(), 1200, y + 2, 20);
 }
 
 void drawEscButton()
@@ -158,14 +210,31 @@ bool windowIsKeyPressedRight()
 {
 	return windowIsKeyPressed(KEY_RIGHT);
 }
+bool windowIsKeyPressedBackSpace()
+{
+	return windowIsKeyPressed(KEY_BACKSPACE);
+}
+bool windowIsKeyReleasedEnter()
+{
+	return  windowIsKeyReleased(KEY_ENTER);
+}
 bool windowIsKeyPressed(int key)
 {
 	return IsKeyDown(key) || IsKeyPressed(key);
+}
+bool windowIsKeyReleased(int key)
+{
+	return IsKeyReleased(key);
 }
 
 bool windowIsMouseButtonPressed()
 {
 	return IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+}
+
+int windowGetCharPressed()
+{
+	return GetCharPressed();
 }
 
 std::map<int, ColorHexMap> windowGetColorSelectionMap()
@@ -214,6 +283,16 @@ int windowIsMouseInColorSelection()
 	return colorSelectionType::NOCOLOR;
 }
 
+bool windowIsMouseCollidesChatBox()
+{
+	return CheckCollisionPointRec(GetMousePosition(), chatSendBoxRect);
+}
+
+bool windowIsMouseCollidesChatSendButton()
+{
+	return CheckCollisionPointRec(GetMousePosition(), chatSendButtonRect);
+}
+
 bool windowIsMouseInEscape()
 {
 	Vector2 mouseCoords = GetMousePosition();
@@ -222,4 +301,14 @@ bool windowIsMouseInEscape()
 		return true;
 	}
 	return false;
+}
+
+void windowSetMouseCursorIBeam()
+{
+	SetMouseCursor(MOUSE_CURSOR_IBEAM);
+}
+
+void windowSetMouseCursorDefault()
+{
+	SetMouseCursor(MOUSE_CURSOR_DEFAULT);
 }
