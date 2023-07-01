@@ -9,6 +9,9 @@ enum BEventType
 	BEventColorUpdateMessage,
 	BEventExternalConnectionExitMessage,
 	BEventTextUpdateMessage,
+
+
+	BEventPositionDebugUpdateMessage = 20,
 };
 
 enum ClientUpdateEventType
@@ -16,6 +19,10 @@ enum ClientUpdateEventType
 	EventPositionMessage = 0,
 	EventColorUpdateMessage,
 	EventTextUpdateMessage,
+
+
+
+	EventPositionDebugMessage = 20,
 
 };
 

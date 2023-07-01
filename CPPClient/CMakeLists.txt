@@ -31,6 +31,22 @@ if (MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
 endif(MSVC)
 
+# json
+#set(SIMDJSON_JUST_LIBRARY ON CACHE STRING "Build just the library, nothing else." FORCE)
+#add_subdirectory(simdjson EXCLUDE_FROM_ALL)
+
+find_package(simdjson QUIET)
+if (NOT simdjson_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+     simdjson
+     GIT_REPOSITORY https://github.com/simdjson/simdjson.git
+     GIT_SHALLOW TRUE
+     GIT_TAG tags/v3.2.0
+     )
+   FetchContent_MakeAvailable(simdjson)
+endif()
+
 if(Boost_FOUND)   
     message("Boost 1.82 found")
 endif()
@@ -146,7 +162,10 @@ ${OPENSSL_INCLUDE_DIR}/../lib/libcrypto.lib
 "$<$<CONFIG:Release>:${Boost_INCLUDE_DIRS}/../../lib/libboost_chrono-vc142-mt-x64-1_82.lib>"
 )
 else()
-target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib 
+target_link_libraries(${ProjName} PUBLIC 
+raylib_cpp 
+raylib 
+simdjson
 ${CPR_LIB} 
 nlohmann_json::nlohmann_json 
 libssl.a
@@ -157,6 +176,7 @@ endif()
 
 target_include_directories(${ProjName} PRIVATE
     ${includes_dir}
+    "${CMAKE_CURRENT_SOURCE_DIR}/simdjson/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/json/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/cpr/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/curl/include"

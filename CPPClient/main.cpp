@@ -6,10 +6,23 @@
 #include "event.hpp"
 #include <functional>
 #include <iostream>
+#include <fstream>
 #include <thread>
 #include <mutex>
 #include <string>
 #include <nlohmann/json.hpp>
+
+// timing benchmark
+#define TIMING_BENCHMARK
+
+#ifdef TIMING_BENCHMARK
+#include <chrono>
+std::chrono::time_point<std::chrono::high_resolution_clock> start;
+std::chrono::time_point<std::chrono::high_resolution_clock> stop0;
+std::chrono::time_point<std::chrono::high_resolution_clock> stop1;
+std::chrono::time_point<std::chrono::high_resolution_clock> stop2;
+#endif
+
 
 // Globals
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
@@ -17,6 +30,8 @@ static constexpr int MAX_INPUT_CHARS = 105;
 ThreadSafeQueue<std::string> wsUpdatedJsonQueue;
 ThreadSafeQueue<std::string> guiJsonQueue;
 std::atomic<bool> g_gameRunning = false;
+
+
 
 // Handler classes
 //----------------------------------------------------------------------------------
@@ -128,6 +143,16 @@ int main() {
     std::function<void(const std::string&)> stdf_message = [&](const std::string &s) { listener.onMessage(s); };
     //--------------------------------------------------------------------------------------
     // End Initialize Handler Classes
+
+#ifdef TIMING_BENCHMARK
+    // open timing benchmark
+    std::ofstream timingReport;
+    timingReport.open("benchmark.txt");
+    if (timingReport.is_open())
+    {
+        std::cout << "Timing Benchmark Open" << std::endl;
+    }
+#endif
 
     //login
 #if DEBUG_CLIENT
@@ -253,6 +278,38 @@ int main() {
                                     }
                                 }
                                 break;
+                                case BEventType::BEventPositionDebugUpdateMessage:
+                                {
+#ifdef TIMING_BENCHMARK
+                                    stop1 = std::chrono::high_resolution_clock::now();
+#endif
+                                    std::string uuidOfPlayerCar = parsedJson.at("UUID");
+                                    if (0 == gui_externalplayers.count(uuidOfPlayerCar))
+                                    {
+                                        // new player
+                                        gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson.at("X"), parsedJson.at("Y"), parsedJson.at("Color")));
+                                        // need to send new player our own position, because client owns position
+                                        move = true;
+                                    }
+                                    else
+                                    {
+                                        gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_X = parsedJson.at("X");
+                                        gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Y = parsedJson.at("Y");
+                                        gui_externalplayers.at(uuidOfPlayerCar).m_color = parsedJson.at("Color");
+                                    }
+#ifdef TIMING_BENCHMARK
+                                    stop2 = std::chrono::high_resolution_clock::now();
+                                    auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(stop0 - start);
+                                    auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(stop1 - start);
+                                    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(stop2 - start);
+                                    // To get the value of duration use the count()
+                                    // member function on the duration object
+                                    timingReport << "Loopback: sendPos dur0: " << duration0.count() << " [msec]" << std::endl;
+                                    timingReport << "Loopback: Move time dur1: " << duration1.count() << " [msec]" << std::endl;
+                                    timingReport << "Loopback: Move time after json parse dur2: " << duration2.count() << " [msec]" << std::endl;
+#endif
+                                }
+                                break;
                             }
                             
                         }
@@ -344,7 +401,13 @@ int main() {
                 }
                 if (move)
                 {
+#ifdef TIMING_BENCHMARK
+                    start = std::chrono::high_resolution_clock::now();
+#endif
                     session->sendPosition(g_X, g_Y);
+#ifdef TIMING_BENCHMARK
+                    stop0 = std::chrono::high_resolution_clock::now();
+#endif       
                     move = false;
                 }
                 // text handling
@@ -438,5 +501,8 @@ int main() {
         std::cout << "Error: couldn't login, http status code: " << statusCode << std::endl;
     }
     windowCloseWindow();
+#ifdef TIMING_BENCHMARK
+    timingReport.close();
+#endif
     return 0;
 }

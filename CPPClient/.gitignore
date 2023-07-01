@@ -3,6 +3,7 @@
 cpr
 curl
 json
+simdjson
 target
 targetdbg
 build

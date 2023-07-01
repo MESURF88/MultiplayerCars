@@ -3,6 +3,7 @@
 #include "event.hpp"
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <simdjson.h>
 
 WebsocketSession::WebsocketSession(net::io_context& ioc, ssl::context& ctx, std::function<void(const std::string&)> readcb, std::string colorStr):
 m_isConnected(false),
@@ -39,11 +40,23 @@ bool WebsocketSession::sendPosition(int X, int Y)
     if (m_isConnected && m_wss.is_message_done())
     {
         //pack x and y into buffer
-        nlohmann::json positionJson = {
-            {"Type", EventPositionMessage},
+        //TODO:
+        /*nlohmann::json positionJson = {
+            {"Type", EventPositionMessage}, 
             {"Payload", {
               {"X", X},
               {"Y", Y},
+              }
+            }
+        };*/
+        nlohmann::json positionJson = {
+            {"Type", EventPositionDebugMessage},
+            {"Payload", {
+              {"Type", BEventPositionDebugUpdateMessage},
+              {"UUID", getClientUUID()},
+              {"X", X},
+              {"Y", Y},
+              {"Color", "25FDCB"},
               }
             }
         };

@@ -23,5 +23,8 @@ nmake install
 cd %CURRDIR%
 SET F=%~dp0\nlohmann_json
 IF NOT EXIST %F% git clone https://github.com/nlohmann/json.git
+cd %CURRDIR%
+SET F=%~dp0\simdjson
+IF NOT EXIST %F% git clone https://github.com/simdjson/simdjson.git && git checkout v3.2.0
 
 PAUSE

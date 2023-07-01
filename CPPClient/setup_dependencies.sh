@@ -88,6 +88,11 @@ if [ ! -d "$CURRDIR/nholmann_json" ]; then
 	git clone https://github.com/nlohmann/json.git
 fi;
 cd "$CURRDIR"
+if [ ! -d "$CURRDIR/simdjson" ]; then
+	git clone https://github.com/simdjson/simdjson.git
+	git checkout v3.2.0
+fi;
+cd "$CURRDIR"
 echo "Complete, Press Any Key to End"
 read -p "$*"
 
