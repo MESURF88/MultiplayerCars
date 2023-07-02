@@ -119,6 +119,16 @@ func (m *Manager) setupEventHandlers() {
 		}
 		return nil
 	}
+
+
+	m.handlers[EventPositionDebugMessage] = func(e Event, c *Client) error {
+		// send raw payload as passthrough down, its faster
+		if err := c.connection.WriteMessage(websocket.TextMessage, e.Payload); err != nil {
+			log.Println(err)
+		}
+		return nil
+	}
+
 }
 
 // routeEvent is used to make sure the correct event goes into the correct handler

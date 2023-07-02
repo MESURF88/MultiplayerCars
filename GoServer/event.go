@@ -8,6 +8,9 @@ const (
 	EventPositionMessage = 0
 	EventColorUpdateMessage = 1
 	EventTextUpdateMessage = 2
+
+
+	EventPositionDebugMessage = 20
 )
 
 // Event is the Messages sent over the websocket
@@ -31,12 +34,24 @@ const (
 	BEventColorUpdateMessage = 2
 	BEventExternalConnectionExitMessage = 3
 	BEventTextUpdateMessage = 4
+
+
+
+	BEventPositionDebugUpdateMessage = 20
 )
 
 type BroadcastEvent struct {
 	BType int `json:"Type"`
 	UUID string `json:"UUID"`
 	TimeStamp string `json:"TimeStamp"`
+	XPos int `json:"X"`
+	YPos int `json:"Y"`
+	Color string `json:"Color"`
+}
+
+type BroadcastPositionEvent struct {
+	BType int `json:"Type"`
+	UUID string `json:"UUID"`
 	XPos int `json:"X"`
 	YPos int `json:"Y"`
 	Color string `json:"Color"`
