@@ -2,7 +2,6 @@
 #include "uuidGenerator.hpp"
 #include "event.hpp"
 #include <iostream>
-#include <nlohmann/json.hpp>
 #include <simdjson.h>
 
 WebsocketSession::WebsocketSession(net::io_context& ioc, ssl::context& ctx, std::function<void(const std::string&)> readcb, std::string colorStr):
@@ -40,28 +39,14 @@ bool WebsocketSession::sendPosition(int X, int Y)
     if (m_isConnected && m_wss.is_message_done())
     {
         //pack x and y into buffer
-        //TODO:
-        /*nlohmann::json positionJson = {
-            {"Type", EventPositionMessage}, 
-            {"Payload", {
-              {"X", X},
-              {"Y", Y},
-              }
-            }
-        };*/
-        nlohmann::json positionJson = {
-            {"Type", EventPositionDebugMessage},
-            {"Payload", {
-              {"Type", BEventPositionDebugUpdateMessage},
-              {"UUID", getClientUUID()},
-              {"X", X},
-              {"Y", Y},
-              {"Color", "25FDCB"},
-              }
-            }
-        };
+        sprintf(m_posRawJson, R"( { "Type": %d , "Payload": { "Color": "%s", "Type": %d, "UUID": "%s", "X": %d, "Y": %d } } )", EventPositionDebugMessage, "25FDCB", BEventPositionDebugUpdateMessage, getClientUUID().c_str(), X, Y); //TODO: color
+        size_t posBufferLength = std::strlen(m_posRawJson);
+        // Create a buffer to receive the minified string. Make sure that there is enough room (length bytes).
+        std::unique_ptr<char[]> posBuffer{ new char[posBufferLength] };
+        size_t new_length{};
+        auto error = simdjson::minify(m_posRawJson, posBufferLength, posBuffer.get(), new_length);
         beast::error_code ec;
-        m_wss.write(net::buffer(positionJson.dump()), ec);
+        m_wss.write(net::buffer(std::string(posBuffer.get(), new_length)), ec);
         if (ec)
         {
             std::cout << ec.message() << "\n";
@@ -77,16 +62,15 @@ bool WebsocketSession::sendColorUpdate(std::string hexValueColor)
     setSessionColor(hexValueColor); // update stored color for online mode
     if (m_isConnected && m_wss.is_message_done())
     {
-        //pack x and y into buffer
-        nlohmann::json colorUpdateJson = {
-            {"Type", EventColorUpdateMessage},
-            {"Payload", {
-              {"Color", hexValueColor },
-              }
-            }
-        };
+        //pack color into buffer
+        sprintf(m_colorRawJson, R"( { "Type": %d , "Payload": { "Color": "%s" } } )", EventColorUpdateMessage, hexValueColor);
+        size_t colorBufferLength = std::strlen(m_colorRawJson);
+        // Create a buffer to receive the minified string. Make sure that there is enough room (length bytes).
+        std::unique_ptr<char[]> colorBuffer{ new char[colorBufferLength] };
+        size_t new_length{};
+        auto error = simdjson::minify(m_colorRawJson, colorBufferLength, colorBuffer.get(), new_length);
         beast::error_code ec;
-        m_wss.write(net::buffer(colorUpdateJson.dump()), ec);
+        m_wss.write(net::buffer(std::string(colorBuffer.get(), new_length)), ec);
         if (ec)
         {
             std::cout << ec.message() << "\n";
@@ -105,20 +89,15 @@ bool WebsocketSession::sendTextMessage(std::string toUUID, std::string colorStr,
     }
     if (m_isConnected && m_wss.is_message_done())
     {
-        //pack x and y into buffer
-        nlohmann::json colorUpdateJson = {
-            {"Type", EventTextUpdateMessage},
-            {"Payload", {
-                {"FromUUID", getClientUUID() },
-                {"ToUUID", toUUID },
-                {"Color", colorStr },
-                {"Text", text },
-                {"Global", global },
-              }
-            }
-        };
+        //pack text message into buffer
+        sprintf(m_textMsgRawJson, R"( { "Type": %d , "Payload": { "Color": "%s", "FromUUID": "%s", "ToUUID": "%s", "Text": "%s", "Global": %s } } )", EventTextUpdateMessage, colorStr, getClientUUID(), toUUID, text, (global)? "true" : "false" );
+        size_t textMsgBufferLength = std::strlen(m_textMsgRawJson);
+        // Create a buffer to receive the minified string. Make sure that there is enough room (length bytes).
+        std::unique_ptr<char[]> textMsgBuffer{ new char[textMsgBufferLength] };
+        size_t new_length{};
+        auto error = simdjson::minify(m_textMsgRawJson, textMsgBufferLength, textMsgBuffer.get(), new_length);
         beast::error_code ec;
-        m_wss.write(net::buffer(colorUpdateJson.dump()), ec);
+        m_wss.write(net::buffer(std::string(textMsgBuffer.get(), new_length)), ec);
         if (ec)
         {
             std::cout << ec.message() << "\n";

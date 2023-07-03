@@ -52,6 +52,9 @@ private:
     std::string m_otp;
     std::string m_currColor;
     bool m_isConnected;
+    char m_posRawJson[300];
+    char m_colorRawJson[300];
+    char m_textMsgRawJson[300];
 };
 
 #if 0 //TODO: use async?

@@ -133,6 +133,7 @@ ${CMAKE_CURRENT_SOURCE_DIR}/gui/carClass.hpp
 
 # source files
 set(source
+${CMAKE_CURRENT_SOURCE_DIR}/simdjson/src/simdjson.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketConnect.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketSession.cpp
