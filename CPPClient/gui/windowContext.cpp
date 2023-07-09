@@ -1,6 +1,6 @@
 #include "windowContext.hpp"
 #include "version.hpp"
-#include "raylib-cpp.hpp" // raylib has to be included in cpp file to avoid name conflicts with windows.h
+
 static constexpr int screenWidth = 1600;
 static constexpr int screenHeight = 850;
 static constexpr int menuPanelHeight = 120;

@@ -1,9 +1,22 @@
 #include "threadSafeQueue.hpp"
 #include "postRequest.hpp"
+
+// raylib has to be included in cpp file to avoid name conflicts with windows.h
+#if defined(WIN32)           
+#define NOGDI             // All GDI defines and routines
+#define NOUSER            // All USER defines and routines
+#endif
+
 #include "websocketConnect.hpp"
+
+#if defined(WIN32)           // raylib uses these names as function parameters
+#undef near
+#undef far
+#endif
+
+#include "event.hpp"
 #include "windowContext.hpp"
 #include "carClass.hpp"
-#include "event.hpp"
 #include <functional>
 #include <iostream>
 #include <fstream>
@@ -59,7 +72,6 @@ public:
                 auto error = onDemanddoc["Type"].get(type);
                 if (!error)
                 {
-                    //int type = onDemanddoc.get_object()["Type"].get_uint64();
                     if ((BEventType::BEventPositionUpdateMessage == type) || (BEventType::BEventPositionDebugUpdateMessage == type))
                     {
                         positionJsonQueue.push(std::move(jsondata)); // move the data to the position queue

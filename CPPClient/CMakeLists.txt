@@ -41,6 +41,12 @@ if (NOT simdjson_FOUND)
      GIT_SHALLOW TRUE
      GIT_TAG tags/v3.2.0
      )
+   FetchContent_GetProperties(simdjson)
+   if (NOT simdjson_POPULATED) # Have we downloaded simdjson yet?
+		set(FETCHCONTENT_QUIET NO)
+		FetchContent_Populate(simdjson)
+		add_subdirectory(${simdjson_SOURCE_DIR} ${simdjson_BINARY_DIR})
+   endif()
    FetchContent_MakeAvailable(simdjson)
 endif()
 
@@ -68,7 +74,7 @@ set(Boost_USE_DEBUG_LIBS         OFF) # ignore debug libs and
 set(Boost_USE_RELEASE_LIBS       ON)  # only find release libs 
 set(Boost_USE_MULTITHREADED      ON)
 set(Boost_USE_STATIC_RUNTIME    OFF) 
-find_package(Boost 1.82.0 COMPONENTS date_time system random thread)
+find_package(Boost 1.82.0 COMPONENTS date_time system random thread chrono)
 
 if(Boost_FOUND)   
     message("Boost 1.82 found")
@@ -131,7 +137,6 @@ ${CMAKE_CURRENT_SOURCE_DIR}/gui/carClass.hpp
 
 # source files
 set(source
-${CMAKE_CURRENT_SOURCE_DIR}/simdjson/src/simdjson.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketConnect.cpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketSession.cpp
@@ -140,8 +145,14 @@ ${CMAKE_CURRENT_SOURCE_DIR}/gui/carClass.cpp
 main.cpp
 )
 
+if (WIN32)
+set(extrasource
+${CMAKE_CURRENT_SOURCE_DIR}/simdjson/src/simdjson.cpp)
+endif()
+
 # Executable
-add_executable(${ProjName} ${inc} ${source})
+add_executable(${ProjName} ${inc} ${source}
+${extrasource})
 
 if(WIN32)
 target_link_libraries(${ProjName} PUBLIC 

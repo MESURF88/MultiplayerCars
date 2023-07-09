@@ -1,5 +1,6 @@
 #ifndef _CARCLASS_
 #define _CARCLASS_
+#include "raylib-cpp.hpp"
 #include <string>
 
 int getCarWidth();
