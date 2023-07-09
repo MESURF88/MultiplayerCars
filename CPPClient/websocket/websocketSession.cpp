@@ -39,7 +39,7 @@ bool WebsocketSession::sendPosition(int X, int Y)
     if (m_isConnected && m_wss.is_message_done())
     {
         //pack x and y into buffer
-        sprintf(m_posRawJson, R"( { "Type": %d , "Payload": { "Color": "%s", "Type": %d, "UUID": "%s", "X": %d, "Y": %d } } )", EventPositionMessage, getSessionColor().c_str(), BEventPositionUpdateMessage, getClientUUID().c_str(), X, Y); //TODO: color getSessionColor().c_str()
+        sprintf(m_posRawJson, R"( { "Type": %d , "Payload": { "Color": "%s", "Type": %d, "UUID": "%s", "X": %d, "Y": %d } } )", EventPositionMessage, getSessionColor().c_str(), BEventPositionUpdateMessage, getClientUUID().c_str(), X, Y);
         size_t posBufferLength = strlen(m_posRawJson);
         // Create a buffer to receive the minified string. Make sure that there is enough room (length bytes).
         std::unique_ptr<char[]> posBuffer{ new char[posBufferLength] };
