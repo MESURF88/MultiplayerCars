@@ -53,7 +53,7 @@ https://github.com/ErisExchange/socket.io-client-cpp/blob/eris-sio_tls_support_n
 after downloading and extracting run
 bootstrap.bat
 then open a administrator prompt and run this command in the folder:
-.\b2 install --prefix="C:\Program Files\boost" --with-system --with-date_time --with-random --with-thread -with-chrono link=static runtime-link=shared threading=multi
+.\b2 install --prefix="C:\Program Files\boost" --with-system --with-date_time --with-random --with-thread --with-chrono link=static runtime-link=shared threading=multi
 
 4. install latest x64 cmake
 https://cmake.org/download/
