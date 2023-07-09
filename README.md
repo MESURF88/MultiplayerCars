@@ -267,10 +267,10 @@ export LD_LIBRARY_PATH=/usr/local/lib
 
 # certificates for running client and server
 ```
-the GoServer Folder needs a Folder named keys containing
+the GoServer Folder needs a directory named keys and containing the following:
 - server.crt
 - server.key
-the CPPClient needs the following
+the CPPClient needs the following in its directory:
 - .env
 - server.crt
 ```
