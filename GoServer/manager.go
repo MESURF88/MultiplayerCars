@@ -224,7 +224,7 @@ func (m *Manager) serveWS(w http.ResponseWriter, r *http.Request) {
 	m.addClient(client)
 	// Start the read / write processes for now
 	m.broadcastNewClientInitPosition(client)
-	go client.sendPeriodicTimeMessages()
+	log.Println("Client Connected, Begin Transmitting")
 	go client.readMessages()
 	go client.writeMessages()
 }
@@ -273,9 +273,7 @@ func (m *Manager) broadcastNewClientInitPosition(c *Client) {
 func (m *Manager) broadcastUpdateToPeers(sendingUUID string, bytepayload []byte) {
 	for clientElement, connected := range m.clients {
 		if (clientElement.UUID != sendingUUID) && (connected)	{
-			if err := clientElement.connection.WriteMessage(websocket.TextMessage, bytepayload); err != nil {
-				log.Println(err)
-			}
+			clientElement.egress <- bytepayload
 		}
 	}
 }
@@ -283,9 +281,7 @@ func (m *Manager) broadcastUpdateToPeers(sendingUUID string, bytepayload []byte)
 func (m *Manager) sendUpdateToPeer(toUUID string, bytepayload []byte) {
 	for clientElement, connected := range m.clients {
 		if (clientElement.UUID == toUUID) && (connected)	{
-			if err := clientElement.connection.WriteMessage(websocket.TextMessage, bytepayload); err != nil {
-				log.Println(err)
-			}
+			clientElement.egress <- bytepayload
 		}
 	}
 }

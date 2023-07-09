@@ -28,11 +28,12 @@ std::chrono::time_point<std::chrono::high_resolution_clock> stop2;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
+static constexpr int PERIODIC_POSITION_BATCH_HANDLING_MS = 1500;
 ThreadSafeQueue<std::string> wsUpdatedJsonQueue;
 ThreadSafeQueue<std::string> guiJsonQueue;
 ThreadSafeQueue<std::string> positionJsonQueue;
 std::atomic<bool> g_gameRunning = false;
-
+std::atomic<bool> g_handleBatch = false;
 
 
 // Handler classes
@@ -75,6 +76,11 @@ public:
             }
             wsUpdatedJsonQueue.pop();
         } while (g_gameRunning);
+    }
+
+    void relayBatchHandlerThread() {
+        boost::this_thread::sleep_for(boost::chrono::milliseconds(PERIODIC_POSITION_BATCH_HANDLING_MS));
+        g_handleBatch = true;
     }
 };
 
@@ -213,7 +219,9 @@ int main() {
             // End Initialize gui variables here
 
             g_gameRunning = true;
-            std::thread guiMessagingThread(&MessageRelay::relayWorkerThread, relay);
+            std::vector<std::thread> m_threadList;
+            m_threadList.push_back(std::thread(&MessageRelay::relayWorkerThread, relay));
+            m_threadList.push_back(std::thread(&MessageRelay::relayBatchHandlerThread, relay));
             // Main game loop
             while (windowShouldCloseWrapper() && g_gameRunning) {   // Detect window close button or ESC key
                 // Update
@@ -497,16 +505,19 @@ int main() {
                 windowBeginDrawing();
                 windowDrawBackground();
                 drawDefaultSquaresColor();
-                drawCar(g_X, g_Y);
                 for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                 {
                     drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
                 }
-                if (positionJsonQueue.getSize() > MAX_BATCHED_POSITIONS_THRESHOLD)
+                drawCar(g_X, g_Y);
+                if (g_handleBatch && (positionJsonQueue.getSize() > MAX_BATCHED_POSITIONS_THRESHOLD))
                 {
                     // batching losing a few is not an issue since positions are pixel updates
-                    positionJsonQueue.pop();
-                    positionJsonQueue.pop();
+                    for (int i = 0; i < positionJsonQueue.getSize()-1; i++)
+                    {
+                        positionJsonQueue.pop();
+                    }
+                    g_handleBatch = false;
                     // skip drawing text if behind on new positions to update
                     continue;
                 }
@@ -539,7 +550,7 @@ int main() {
             session->closeConnection();
             g_gameRunning = false;
             wsUpdatedJsonQueue.push(""); // get out of deadlock
-            guiMessagingThread.join();  
+            for (auto& t : m_threadList) t.join();
         }
     }
     else 
