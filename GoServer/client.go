@@ -57,11 +57,6 @@ func (c *Client) sendPeriodicTimeMessages() {
 		c.manager.removeClient(c)
 	}()
 	log.Println("Client Connected, Begin Transmitting")
-	/*
-	4           => Engine.IO "message" packet type
-	2           => Socket.IO "EVENT" packet type
-	[...]       => content
-	*/
 	var errorFound bool = false
 	for {
 		payload := BroadcastEvent{BEventTimeStampMessage, c.UUID, time.Now().Format(time.RFC3339Nano), 0, 0, ""}
@@ -92,8 +87,6 @@ func (c *Client) readMessages() {
 		c.manager.removeClient(c)
 	}()
 	// Set Max Size of Messages in Bytes
-	
-	/*TODO: configure heartbeat ping pong
 	c.connection.SetReadLimit(512)
     // Configure Wait time for Pong response, use Current time + pongWait
 	// This has to be done here to set the first initial timer.
@@ -102,7 +95,7 @@ func (c *Client) readMessages() {
 		return
 	}
 	// Configure how to handle Pong responses
-	c.connection.SetPongHandler(c.pongHandler)*/
+	c.connection.SetPongHandler(c.pongHandler)
 
 	// Loop Forever
 	for {
@@ -134,7 +127,7 @@ func (c *Client) readMessages() {
 // pongHandler is used to handle PongMessages for the Client
 func (c *Client) pongHandler(pongMsg string) error {
 	// Current time + Pong Wait time
-	log.Println("pong")
+	log.Println("pong " + c.UUID[0:8])
 	return c.connection.SetReadDeadline(time.Now().Add(pongWait))
 }
 
@@ -151,29 +144,7 @@ func (c *Client) writeMessages() {
 
 	for {
 		select {
-		case message, ok := <-c.egress:
-			// Ok will be false Incase the egress channel is closed
-			if !ok {
-				// Manager has closed this connection channel, so communicate that to frontend
-				if err := c.connection.WriteMessage(websocket.CloseMessage, nil); err != nil {
-					// Log that the connection is closed and the reason
-					log.Println("connection closed: ", err)
-				}
-				// Return to close the goroutine
-				return
-			}
-			data, err := json.Marshal(message)
-			if err != nil {
-				log.Println(err)
-				return // closes the connection, should we really
-			}
-			// Write a Regular text message to the connection
-			if err := c.connection.WriteMessage(websocket.TextMessage, data); err != nil {
-				log.Println(err)
-			}
-			log.Println("sent message")
 		case <-tickler.C:
-			log.Println("ping")
 			// Send the Ping
 			if err := c.connection.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 				log.Println("writemsg: ", err)

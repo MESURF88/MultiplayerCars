@@ -67,11 +67,6 @@ type BroadcastTextMessageEvent struct {
 	Global   bool   `json:"Global"`
 }
 
-type PositionCartesianCoordEvent struct {
-	XPos int `json:"X"`
-	YPos int `json:"Y"`
-}
-
 type ColorUpdateEvent struct {
 	Color string `json:"Color"`
 }

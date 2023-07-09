@@ -32,9 +32,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
 endif(MSVC)
 
 # json
-#set(SIMDJSON_JUST_LIBRARY ON CACHE STRING "Build just the library, nothing else." FORCE)
-#add_subdirectory(simdjson EXCLUDE_FROM_ALL)
-
 find_package(simdjson QUIET)
 if (NOT simdjson_FOUND)
     include(FetchContent)
@@ -124,6 +121,7 @@ set(inc
 ${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketConnect.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketSession.hpp
+${CMAKE_CURRENT_SOURCE_DIR}/gui/version.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/event.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/uuidGenerator.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/threadSafeQueue.hpp
@@ -146,7 +144,10 @@ main.cpp
 add_executable(${ProjName} ${inc} ${source})
 
 if(WIN32)
-target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib 
+target_link_libraries(${ProjName} PUBLIC 
+raylib_cpp 
+raylib
+simdjson 
 ${CPR_LIB} 
 nlohmann_json::nlohmann_json 
 ${OPENSSL_INCLUDE_DIR}/../lib/libssl.lib
