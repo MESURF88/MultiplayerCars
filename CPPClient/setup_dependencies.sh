@@ -32,11 +32,11 @@ fi
 echo "Install boost dependencies"
 cd "$CURRDIR"
 if [ ! -d "/usr/include/boost" ]; then
-	wget https://boostorg.jfrog.io/artifactory/main/release/1.80.0/source/boost_1_80_0.tar.gz
+	wget https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.gz
 	tar xvf boost_1_82_0.tar.gz
 	cd boost_1_82_0
 	./bootstrap.sh --prefix=/usr/
-	sudo ./b2 install --prefix=/usr/ --with-system --with-date_time --with-random --with-thread link=static runtime-link=shared threading=multi
+	sudo ./b2 install --prefix=/usr/ --with-system --with-date_time --with-random --with-thread --with-chrono link=static runtime-link=shared threading=multi
 	cd ..
 	rm -rf boost_1_82_0
 	rm boost_1_82_0.tar.gz
@@ -65,7 +65,9 @@ make
 cd "$CURRDIR"
 if [ ! -d "$CURRDIR/cpr" ]; then
 	git clone https://github.com/libcpr/cpr.git
+	cd cpr
 	git checkout a2d35a1cb9f3f7e2f1469d6a189751331dc99f96
+	cd ..
 fi;
 cd cpr
 if [ ! -d "$CURRDIR/cpr/cpr-build" ]; then
@@ -86,6 +88,13 @@ sudo make install
 cd "$CURRDIR"
 if [ ! -d "$CURRDIR/nholmann_json" ]; then
 	git clone https://github.com/nlohmann/json.git
+fi;
+cd "$CURRDIR"
+if [ ! -d "$CURRDIR/simdjson" ]; then
+	git clone https://github.com/simdjson/simdjson.git
+	cd simdjson
+	git checkout v3.2.0
+	cd ..
 fi;
 cd "$CURRDIR"
 echo "Complete, Press Any Key to End"

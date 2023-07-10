@@ -1,5 +1,6 @@
 #ifndef _WINDOWCONTEXT_
 #define _WINDOWCONTEXT_
+#include "raylib-cpp.hpp" 
 #include <string>
 #include <map>
 

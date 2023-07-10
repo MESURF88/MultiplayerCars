@@ -2,7 +2,7 @@
 #include "uuidGenerator.hpp"
 #include "event.hpp"
 #include <iostream>
-#include <nlohmann/json.hpp>
+#include <simdjson.h>
 
 WebsocketSession::WebsocketSession(net::io_context& ioc, ssl::context& ctx, std::function<void(const std::string&)> readcb, std::string colorStr):
 m_isConnected(false),
@@ -39,21 +39,13 @@ bool WebsocketSession::sendPosition(int X, int Y)
     if (m_isConnected && m_wss.is_message_done())
     {
         //pack x and y into buffer
-        nlohmann::json positionJson = {
-            {"Type", EventPositionMessage},
-            {"Payload", {
-              {"X", X},
-              {"Y", Y},
-              }
-            }
-        };
-        beast::error_code ec;
-        m_wss.write(net::buffer(positionJson.dump()), ec);
-        if (ec)
-        {
-            std::cout << ec.message() << "\n";
-            std::cout << "error: could not write buffer" << std::endl;
-        }
+        sprintf(m_posRawJson, R"( { "Type": %d , "Payload": { "Color": "%s", "Type": %d, "UUID": "%s", "X": %d, "Y": %d } } )", EventPositionMessage, getSessionColor().c_str(), BEventPositionUpdateMessage, getClientUUID().c_str(), X, Y);
+        size_t posBufferLength = strlen(m_posRawJson);
+        // Create a buffer to receive the minified string. Make sure that there is enough room (length bytes).
+        std::unique_ptr<char[]> posBuffer{ new char[posBufferLength] };
+        size_t new_length{};
+        auto error = simdjson::minify(m_posRawJson, posBufferLength, posBuffer.get(), new_length);
+        asyncWriteQueue.push(std::string(posBuffer.get(), new_length));
     }
     return succ;
 }
@@ -64,16 +56,15 @@ bool WebsocketSession::sendColorUpdate(std::string hexValueColor)
     setSessionColor(hexValueColor); // update stored color for online mode
     if (m_isConnected && m_wss.is_message_done())
     {
-        //pack x and y into buffer
-        nlohmann::json colorUpdateJson = {
-            {"Type", EventColorUpdateMessage},
-            {"Payload", {
-              {"Color", hexValueColor },
-              }
-            }
-        };
+        //pack color into buffer
+        sprintf(m_colorRawJson, R"( { "Type": %d , "Payload": { "Color": "%s" } } )", EventColorUpdateMessage, hexValueColor.c_str());
+        size_t colorBufferLength = std::strlen(m_colorRawJson);
+        // Create a buffer to receive the minified string. Make sure that there is enough room (length bytes).
+        std::unique_ptr<char[]> colorBuffer{ new char[colorBufferLength] };
+        size_t new_length{};
+        auto error = simdjson::minify(m_colorRawJson, colorBufferLength, colorBuffer.get(), new_length);
         beast::error_code ec;
-        m_wss.write(net::buffer(colorUpdateJson.dump()), ec);
+        m_wss.write(net::buffer(std::string(colorBuffer.get(), new_length)), ec);
         if (ec)
         {
             std::cout << ec.message() << "\n";
@@ -92,20 +83,15 @@ bool WebsocketSession::sendTextMessage(std::string toUUID, std::string colorStr,
     }
     if (m_isConnected && m_wss.is_message_done())
     {
-        //pack x and y into buffer
-        nlohmann::json colorUpdateJson = {
-            {"Type", EventTextUpdateMessage},
-            {"Payload", {
-                {"FromUUID", getClientUUID() },
-                {"ToUUID", toUUID },
-                {"Color", colorStr },
-                {"Text", text },
-                {"Global", global },
-              }
-            }
-        };
+        //pack text message into buffer
+        sprintf(m_textMsgRawJson, R"( { "Type": %d , "Payload": { "Color": "%s", "FromUUID": "%s", "ToUUID": "%s", "Text": "%s", "Global": %s } } )", EventTextUpdateMessage, colorStr.c_str(), getClientUUID().c_str(), toUUID.c_str(), text.c_str(), (global)? "true" : "false" );
+        size_t textMsgBufferLength = std::strlen(m_textMsgRawJson);
+        // Create a buffer to receive the minified string. Make sure that there is enough room (length bytes).
+        std::unique_ptr<char[]> textMsgBuffer{ new char[textMsgBufferLength] };
+        size_t new_length{};
+        auto error = simdjson::minify(m_textMsgRawJson, textMsgBufferLength, textMsgBuffer.get(), new_length);
         beast::error_code ec;
-        m_wss.write(net::buffer(colorUpdateJson.dump()), ec);
+        m_wss.write(net::buffer(std::string(textMsgBuffer.get(), new_length)), ec);
         if (ec)
         {
             std::cout << ec.message() << "\n";
@@ -123,6 +109,22 @@ void WebsocketSession::setSessionColor(std::string currColor)
 std::string WebsocketSession::getSessionColor()
 {
     return m_currColor;
+}
+
+void WebsocketSession::workerWrite()
+{
+    do
+    {
+        std::string tmp = asyncWriteQueue.front();
+        beast::error_code ec;
+        m_wss.write(net::buffer(tmp), ec);
+        if (ec)
+        {
+            std::cout << ec.message() << "\n";
+            std::cout << "error: could not write buffer" << std::endl;
+        }
+        asyncWriteQueue.pop();
+    } while (m_isConnected);
 }
 
 void WebsocketSession::workerRead()
@@ -166,6 +168,7 @@ void WebsocketSession::workerRead()
 
         m_isConnected = true;
 
+        m_threadList.push_back(std::thread(&WebsocketSession::workerWrite, this));
         do
         {
             beast::flat_buffer buffer;
@@ -194,6 +197,7 @@ void WebsocketSession::workerRead()
 void WebsocketSession::closeConnection()
 {
     m_isConnected = false;
+    asyncWriteQueue.push(""); // get out of deadlock
     for (auto& t : m_threadList) t.join();
     beast::error_code ecCancel;
     m_wss.next_layer().next_layer().cancel(ecCancel);

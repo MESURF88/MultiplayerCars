@@ -53,7 +53,7 @@ https://github.com/ErisExchange/socket.io-client-cpp/blob/eris-sio_tls_support_n
 after downloading and extracting run
 bootstrap.bat
 then open a administrator prompt and run this command in the folder:
-.\b2 install --prefix="C:\Program Files\boost" --with-system --with-date_time --with-random --with-thread link=static runtime-link=shared threading=multi
+.\b2 install --prefix="C:\Program Files\boost" --with-system --with-date_time --with-random --with-thread --with-chrono link=static runtime-link=shared threading=multi
 
 4. install latest x64 cmake
 https://cmake.org/download/
@@ -267,10 +267,10 @@ export LD_LIBRARY_PATH=/usr/local/lib
 
 # certificates for running client and server
 ```
-the GoServer Folder needs a Folder named keys containing
+the GoServer Folder needs a directory named keys and containing the following:
 - server.crt
 - server.key
-the CPPClient needs the following
+the CPPClient needs the following in its directory:
 - .env
 - server.crt
 ```

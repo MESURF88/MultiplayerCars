@@ -1,22 +1,53 @@
 #include "threadSafeQueue.hpp"
 #include "postRequest.hpp"
+
+// raylib has to be included in cpp file to avoid name conflicts with windows.h
+#if defined(WIN32)           
+#define NOGDI             // All GDI defines and routines
+#define NOUSER            // All USER defines and routines
+#endif
+
 #include "websocketConnect.hpp"
+
+#if defined(WIN32)           // raylib uses these names as function parameters
+#undef near
+#undef far
+#endif
+
+#include "event.hpp"
 #include "windowContext.hpp"
 #include "carClass.hpp"
-#include "event.hpp"
 #include <functional>
 #include <iostream>
+#include <fstream>
 #include <thread>
 #include <mutex>
 #include <string>
-#include <nlohmann/json.hpp>
+#include <simdjson.h>
+
+// timing benchmark
+//#define TIMING_BENCHMARK
+
+#ifdef TIMING_BENCHMARK
+#include <chrono>
+std::chrono::time_point<std::chrono::high_resolution_clock> start;
+std::chrono::time_point<std::chrono::high_resolution_clock> stop0;
+std::chrono::time_point<std::chrono::high_resolution_clock> stop1;
+std::chrono::time_point<std::chrono::high_resolution_clock> stop2;
+#endif
+
 
 // Globals
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
+static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
+static constexpr int PERIODIC_POSITION_BATCH_HANDLING_MS = 1500;
 ThreadSafeQueue<std::string> wsUpdatedJsonQueue;
 ThreadSafeQueue<std::string> guiJsonQueue;
+ThreadSafeQueue<std::string> positionJsonQueue;
 std::atomic<bool> g_gameRunning = false;
+std::atomic<bool> g_handleBatch = false;
+
 
 // Handler classes
 //----------------------------------------------------------------------------------
@@ -28,22 +59,40 @@ public:
     ~MessageRelay() { };
 
     void relayWorkerThread() {
-        while (g_gameRunning) {
-            if (!wsUpdatedJsonQueue.isEmpty())
+        simdjson::ondemand::parser onDemandTypeParser;
+        simdjson::ondemand::document onDemanddoc;
+        simdjson::ondemand::object onDemandObject;
+        uint64_t type;
+        do {
+            std::string& jsondata = wsUpdatedJsonQueue.front(); // no copy, just a reference
+            auto tmpJson = simdjson::padded_string(jsondata);
+            if (jsondata.length() > 0)
             {
-                std::string& jsondata = wsUpdatedJsonQueue.front(); // no copy, just a reference
-                guiJsonQueue.push(std::move(jsondata)); // move the data to the other queue
-                wsUpdatedJsonQueue.pop();
-            }
-            else
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                if (!g_gameRunning)
+                onDemanddoc = onDemandTypeParser.iterate(tmpJson);
+                auto error = onDemanddoc["Type"].get(type);
+                if (!error)
                 {
-                    break;
+                    if ((BEventType::BEventPositionUpdateMessage == type) || (BEventType::BEventPositionDebugUpdateMessage == type))
+                    {
+                        positionJsonQueue.push(std::move(jsondata)); // move the data to the position queue
+                    }
+                    else
+                    {
+                        guiJsonQueue.push(std::move(jsondata)); // move the data to the other general queue
+                    }
+                }
+                else
+                {
+                    std::cout << "relayWorkerThread() out of range: " << std::endl;
                 }
             }
-        }
+            wsUpdatedJsonQueue.pop();
+        } while (g_gameRunning);
+    }
+
+    void relayBatchHandlerThread() {
+        boost::this_thread::sleep_for(boost::chrono::milliseconds(PERIODIC_POSITION_BATCH_HANDLING_MS));
+        g_handleBatch = true;
     }
 };
 
@@ -67,23 +116,13 @@ public:
 
     void onMessage(const std::string &msg)
     {
-        // notify can get new timestamp
+        // notify can get new data
         wsUpdatedJsonQueue.push("" + msg); // must be rvalue 
     }
 
-    nlohmann::json parseMessage(const std::string& msg)
-    {
-        try
-        {
-            return nlohmann::json::parse(msg);
-        }
-        catch (std::out_of_range& e)
-        {
-            std::cout << "out of range: " << e.what() << std::endl;
-        }
-        return nlohmann::json{ };
-    }
 
+    simdjson::dom::object m_parsedJson;
+    simdjson::dom::parser m_jsonParser;
 private:
 
 };
@@ -129,6 +168,16 @@ int main() {
     //--------------------------------------------------------------------------------------
     // End Initialize Handler Classes
 
+#ifdef TIMING_BENCHMARK
+    // open timing benchmark
+    std::ofstream timingReport;
+    timingReport.open("benchmark.txt");
+    if (timingReport.is_open())
+    {
+        std::cout << "Timing Benchmark Open" << std::endl;
+    }
+#endif
+
     //login
 #if DEBUG_CLIENT
     std::string host = "127.0.0.1"; 
@@ -159,6 +208,7 @@ int main() {
 
         if (session)
         {
+
             // Initialize gui variables here
             //----------------------------------------------------------------------------------
             bool move = false;
@@ -181,57 +231,114 @@ int main() {
             // End Initialize gui variables here
 
             g_gameRunning = true;
-            std::thread guiMessagingThread(&MessageRelay::relayWorkerThread, relay);
+            std::vector<std::thread> m_threadList;
+            m_threadList.push_back(std::thread(&MessageRelay::relayWorkerThread, relay));
+            m_threadList.push_back(std::thread(&MessageRelay::relayBatchHandlerThread, relay));
             // Main game loop
             while (windowShouldCloseWrapper() && g_gameRunning) {   // Detect window close button or ESC key
                 // Update
                 //----------------------------------------------------------------------------------
                 // Update your variables here
-                if (!guiJsonQueue.isEmpty()) // gui update queue, get fifo
+                    if (!positionJsonQueue.isEmpty()) // position update queue, get fifo
+                    {
+                        // online json parser
+                        auto error = listener.m_jsonParser.parse(positionJsonQueue.front()).get(listener.m_parsedJson);
+                        if (!error)
+                        {
+                            simdjson::dom::object& parsedJson = listener.m_parsedJson;
+                            try {
+                                int type = listener.m_parsedJson["Type"].get_uint64();
+                                switch (type)
+                                {
+                                    case BEventType::BEventPositionUpdateMessage:
+                                    {
+                                        std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
+                                        if (0 == gui_externalplayers.count(uuidOfPlayerCar))
+                                        {
+                                            // new player
+                                            gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson["X"].get_int64(), parsedJson["Y"].get_int64(), std::string{ parsedJson["Color"].get_string().value() }));
+                                            // need to send new player our own position, because client owns position
+                                            move = true;
+                                        }
+                                        else
+                                        {
+                                            gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_X = parsedJson["X"].get_int64();
+                                            gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Y = parsedJson["Y"].get_int64();
+                                            gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
+                                        }
+                                    }
+                                    break;
+                                    case BEventType::BEventPositionDebugUpdateMessage:
+                                    {
+                                        std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
+                                        if (0 == gui_externalplayers.count(uuidOfPlayerCar))
+                                        {
+                                            // new player
+                                            gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson["X"].get_int64(), parsedJson["Y"].get_int64(), std::string{ parsedJson["Color"].get_string().value() }));
+                                            // need to send new player our own position, because client owns position
+                                            move = true;
+                                        }
+                                        else
+                                        {
+                                            gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_X = parsedJson["X"].get_int64();
+                                            gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Y = parsedJson["Y"].get_int64();
+                                            gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
+                                        }
+    #ifdef TIMING_BENCHMARK
+                                        stop2 = std::chrono::high_resolution_clock::now();
+                                        auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(stop0 - start);
+                                        auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(stop1 - start);
+                                        auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(stop2 - start);
+                                        // To get the value of duration use the count()
+                                        // member function on the duration object
+                                        timingReport << "Loopback: sendpos dur0: " << duration0.count() << " [msec]" << std::endl;
+                                        timingReport << "Loopback: diff dur0 dur1: " << duration1.count() - duration0.count() << " [msec]" << std::endl;
+                                        timingReport << "Loopback: Move time after json parse dur2: " << duration2.count() << " [msec]" << std::endl;
+    #endif
+                                    }
+                                    break;
+                                }
+                            }
+                            catch (std::out_of_range& e)
+                            {
+                                std::cout << "positionJsonQueue Update out of range: " << e.what() << std::endl;
+                            }
+                    }
+                    else
+                    {
+                        std::cout << "error parsing json: " << error << std::endl;
+                    }
+                    positionJsonQueue.pop();
+                }
+
+                if (!guiJsonQueue.isEmpty() && (positionJsonQueue.getSize() <= MAX_BATCHED_POSITIONS_THRESHOLD)) // gui update queue, get fifo, if position queue small
                 {
                     // online json parser
-                    nlohmann::json parsedJson = listener.parseMessage(guiJsonQueue.front());
-                    if (!parsedJson.empty())
+                    auto error = listener.m_jsonParser.parse(guiJsonQueue.front()).get(listener.m_parsedJson);
+                    if (!error)
                     {
+                        simdjson::dom::object &parsedJson = listener.m_parsedJson;
                         try {
-                            int type = parsedJson.at("Type");
+                            int type = listener.m_parsedJson["Type"].get_uint64();
                             switch (type)
                             {
                             case BEventType::BEventTimeStampMessage:
                                 {
-                                    gui_timestamp = parsedJson.at("TimeStamp");
-                                }
-                                break;
-                                case BEventType::BEventPositionUpdateMessage:
-                                {
-                                    std::string uuidOfPlayerCar = parsedJson.at("UUID");
-                                    if (0 == gui_externalplayers.count(uuidOfPlayerCar))
-                                    {
-                                        // new player
-                                        gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson.at("X"), parsedJson.at("Y"), parsedJson.at("Color")));
-                                        // need to send new player our own position, because client owns position
-                                        move = true;
-                                    }
-                                    else
-                                    {
-                                        gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_X = parsedJson.at("X");
-                                        gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Y = parsedJson.at("Y");
-                                        gui_externalplayers.at(uuidOfPlayerCar).m_color = parsedJson.at("Color");
-                                    }
+                                    gui_timestamp = std::string{ parsedJson["TimeStamp"].get_string().value() };
                                 }
                                 break;
                                 case BEventType::BEventColorUpdateMessage:
                                 {
-                                    std::string uuidOfPlayerCar = parsedJson.at("UUID");
+                                    std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
                                     if (gui_externalplayers.count(uuidOfPlayerCar))
                                     {
-                                        gui_externalplayers.at(uuidOfPlayerCar).m_color = parsedJson.at("Color");
+                                        gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
                                     }
                                 }
                                 break;
                                 case BEventType::BEventExternalConnectionExitMessage:
                                 {
-                                    std::string uuidOfPlayerCar = parsedJson.at("UUID");
+                                    std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
                                     if (gui_externalplayers.count(uuidOfPlayerCar))
                                     {
                                         gui_externalplayers.erase(uuidOfPlayerCar);
@@ -240,29 +347,33 @@ int main() {
                                 break;
                                 case BEventType::BEventTextUpdateMessage:
                                 {
-                                    std::string uuidOfSender = parsedJson.at("FromUUID");
+                                    std::string uuidOfSender = std::string{ parsedJson["FromUUID"].get_string().value() };
                                     // sender is not current player
                                     if (uuidOfSender != session->getClientUUID())
                                     {
                                         // only display last 5 messages for now...
-                                        std::string senderColor = parsedJson.at("Color");
-                                        std::string senderText = parsedJson.at("Text");
-                                        std::string senderTimeStamp = parsedJson.at("TimeStamp");
+                                        std::string senderColor = std::string{ parsedJson["Color"].get_string().value() };
+                                        std::string senderText = std::string{ parsedJson["Text"].get_string().value() };
+                                        std::string senderTimeStamp = std::string{ parsedJson["TimeStamp"].get_string().value() };
                                         gui_textmessagesdisplay.pop_back();
                                         gui_textmessagesdisplay.push_front(TextContext(true, senderColor, senderText, senderTimeStamp));
                                     }
                                 }
                                 break;
                             }
-                            
                         }
                         catch (std::out_of_range& e)
                         {
-                            std::cout << "out of range: " << e.what() << std::endl;
+                            std::cout << "guiJsonQueue Update out of range: " << e.what() << std::endl;
                         }
+                    }
+                    else
+                    {
+                        std::cout << "error parsing json: " << error << std::endl;
                     }
                     guiJsonQueue.pop();
                 }
+
                 //----------------------------------------------------------------------------------
                 // End Update
 
@@ -344,7 +455,13 @@ int main() {
                 }
                 if (move)
                 {
-                    session->sendPosition(g_X, g_Y);
+#ifdef TIMING_BENCHMARK
+                    start = std::chrono::high_resolution_clock::now();
+#endif
+                    session->sendPosition(g_X, g_Y);    
+#ifdef TIMING_BENCHMARK
+                    stop0 = std::chrono::high_resolution_clock::now();
+#endif
                     move = false;
                 }
                 // text handling
@@ -400,10 +517,21 @@ int main() {
                 windowBeginDrawing();
                 windowDrawBackground();
                 drawDefaultSquaresColor();
-                drawCar(g_X, g_Y);
                 for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                 {
                     drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
+                }
+                drawCar(g_X, g_Y);
+                if (g_handleBatch && (positionJsonQueue.getSize() > MAX_BATCHED_POSITIONS_THRESHOLD))
+                {
+                    // batching losing a few is not an issue since positions are pixel updates
+                    for (int i = 0; i < positionJsonQueue.getSize()-1; i++)
+                    {
+                        positionJsonQueue.pop();
+                    }
+                    g_handleBatch = false;
+                    // skip drawing text if behind on new positions to update
+                    continue;
                 }
                 drawTextTestBox(gui_timestamp);
                 drawChatBoxContainer();
@@ -427,10 +555,14 @@ int main() {
                 windowEndDrawing();
                 //----------------------------------------------------------------------------------
                 // End Draw
+#ifdef TIMING_BENCHMARK
+                stop1 = std::chrono::high_resolution_clock::now();
+#endif
             }
             session->closeConnection();
             g_gameRunning = false;
-            guiMessagingThread.join();  
+            wsUpdatedJsonQueue.push(""); // get out of deadlock
+            for (auto& t : m_threadList) t.join();
         }
     }
     else 
@@ -438,5 +570,8 @@ int main() {
         std::cout << "Error: couldn't login, http status code: " << statusCode << std::endl;
     }
     windowCloseWindow();
+#ifdef TIMING_BENCHMARK
+    timingReport.close();
+#endif
     return 0;
 }

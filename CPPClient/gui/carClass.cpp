@@ -1,6 +1,6 @@
 #include "carClass.hpp"
 #include "windowContext.hpp"
-#include "raylib-cpp.hpp" // raylib has to be included in cpp file to avoid name conflicts with windows.h
+
 static constexpr int carWidth = 50;
 static constexpr int carHeight = 50;
 static const raylib::Color defaultCarColor = raylib::Color::Blue();

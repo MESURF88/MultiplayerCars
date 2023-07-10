@@ -31,6 +31,25 @@ if (MSVC)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
 endif(MSVC)
 
+# json
+find_package(simdjson QUIET)
+if (NOT simdjson_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+     simdjson
+     GIT_REPOSITORY https://github.com/simdjson/simdjson.git
+     GIT_SHALLOW TRUE
+     GIT_TAG tags/v3.2.0
+     )
+   FetchContent_GetProperties(simdjson)
+   if (NOT simdjson_POPULATED) # Have we downloaded simdjson yet?
+		set(FETCHCONTENT_QUIET NO)
+		FetchContent_Populate(simdjson)
+		add_subdirectory(${simdjson_SOURCE_DIR} ${simdjson_BINARY_DIR})
+   endif()
+   FetchContent_MakeAvailable(simdjson)
+endif()
+
 if(Boost_FOUND)   
     message("Boost 1.82 found")
 endif()
@@ -55,7 +74,7 @@ set(Boost_USE_DEBUG_LIBS         OFF) # ignore debug libs and
 set(Boost_USE_RELEASE_LIBS       ON)  # only find release libs 
 set(Boost_USE_MULTITHREADED      ON)
 set(Boost_USE_STATIC_RUNTIME    OFF) 
-find_package(Boost 1.82.0 COMPONENTS date_time system random thread)
+find_package(Boost 1.82.0 COMPONENTS date_time system random thread chrono)
 
 if(Boost_FOUND)   
     message("Boost 1.82 found")
@@ -108,6 +127,7 @@ set(inc
 ${CMAKE_CURRENT_SOURCE_DIR}/http/postRequest.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketConnect.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketSession.hpp
+${CMAKE_CURRENT_SOURCE_DIR}/gui/version.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/event.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/uuidGenerator.hpp
 ${CMAKE_CURRENT_SOURCE_DIR}/gui/threadSafeQueue.hpp
@@ -125,11 +145,20 @@ ${CMAKE_CURRENT_SOURCE_DIR}/gui/carClass.cpp
 main.cpp
 )
 
+if (WIN32)
+set(extrasource
+${CMAKE_CURRENT_SOURCE_DIR}/simdjson/src/simdjson.cpp)
+endif()
+
 # Executable
-add_executable(${ProjName} ${inc} ${source})
+add_executable(${ProjName} ${inc} ${source}
+${extrasource})
 
 if(WIN32)
-target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib 
+target_link_libraries(${ProjName} PUBLIC 
+raylib_cpp 
+raylib
+simdjson 
 ${CPR_LIB} 
 nlohmann_json::nlohmann_json 
 ${OPENSSL_INCLUDE_DIR}/../lib/libssl.lib
@@ -146,7 +175,10 @@ ${OPENSSL_INCLUDE_DIR}/../lib/libcrypto.lib
 "$<$<CONFIG:Release>:${Boost_INCLUDE_DIRS}/../../lib/libboost_chrono-vc142-mt-x64-1_82.lib>"
 )
 else()
-target_link_libraries(${ProjName} PUBLIC raylib_cpp raylib 
+target_link_libraries(${ProjName} PUBLIC 
+raylib_cpp 
+raylib 
+simdjson
 ${CPR_LIB} 
 nlohmann_json::nlohmann_json 
 libssl.a
@@ -157,6 +189,7 @@ endif()
 
 target_include_directories(${ProjName} PRIVATE
     ${includes_dir}
+    "${CMAKE_CURRENT_SOURCE_DIR}/simdjson/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/json/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/cpr/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/curl/include"

@@ -32,6 +32,11 @@ public:
         return queue.empty();
     }
 
+    int getSize()
+    {
+        return queue.size();
+    }
+
 private:
     std::mutex mutex;
     std::condition_variable cond_var;

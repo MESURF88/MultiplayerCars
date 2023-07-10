@@ -70,18 +70,8 @@ func NewManager(ctx context.Context) *Manager {
 // setupEventHandlers configures and adds all handlers
 func (m *Manager) setupEventHandlers() {
 	m.handlers[EventPositionMessage] = func(e Event, c *Client) error {
-		var position PositionCartesianCoordEvent
-		if err := json.Unmarshal(e.Payload, &position); err != nil {
-			log.Printf("error marshalling position message: %v", err)
-		} else {
-			// for each client that is not the same uuid as sending client broadcast update of car x y uuid, timestamp and color
-			clientDataPayload := BroadcastEvent{BEventPositionUpdateMessage, c.UUID, time.Now().Format(time.RFC3339Nano), position.XPos, position.YPos, c.color}
-			bytepayload, jsonerr := json.Marshal(clientDataPayload)
-			if jsonerr != nil {
-				log.Printf("error creating json broadcast message: %v", jsonerr)
-			}
-			m.broadcastUpdateToPeers(c.UUID, bytepayload)
-		}
+        // send raw payload as passthrough down, its faster
+		m.broadcastUpdateToPeers(c.UUID, e.Payload)
 		return nil
 	}
 	m.handlers[EventColorUpdateMessage] = func(e Event, c *Client) error {
@@ -119,6 +109,15 @@ func (m *Manager) setupEventHandlers() {
 		}
 		return nil
 	}
+
+	m.handlers[EventPositionDebugMessage] = func(e Event, c *Client) error {
+		// send raw payload as passthrough down, its faster
+		if err := c.connection.WriteMessage(websocket.TextMessage, e.Payload); err != nil {
+			log.Println(err)
+		}
+		return nil
+	}
+
 }
 
 // routeEvent is used to make sure the correct event goes into the correct handler
@@ -225,9 +224,9 @@ func (m *Manager) serveWS(w http.ResponseWriter, r *http.Request) {
 	m.addClient(client)
 	// Start the read / write processes for now
 	m.broadcastNewClientInitPosition(client)
-	go client.sendPeriodicTimeMessages()
+	log.Println("Client Connected, Begin Transmitting")
 	go client.readMessages()
-	//TODO: go client.writeMessages()
+	go client.writeMessages()
 }
 
 // addClient will add clients to our clientList
@@ -274,9 +273,7 @@ func (m *Manager) broadcastNewClientInitPosition(c *Client) {
 func (m *Manager) broadcastUpdateToPeers(sendingUUID string, bytepayload []byte) {
 	for clientElement, connected := range m.clients {
 		if (clientElement.UUID != sendingUUID) && (connected)	{
-			if err := clientElement.connection.WriteMessage(websocket.TextMessage, bytepayload); err != nil {
-				log.Println(err)
-			}
+			clientElement.egress <- bytepayload
 		}
 	}
 }
@@ -284,9 +281,7 @@ func (m *Manager) broadcastUpdateToPeers(sendingUUID string, bytepayload []byte)
 func (m *Manager) sendUpdateToPeer(toUUID string, bytepayload []byte) {
 	for clientElement, connected := range m.clients {
 		if (clientElement.UUID == toUUID) && (connected)	{
-			if err := clientElement.connection.WriteMessage(websocket.TextMessage, bytepayload); err != nil {
-				log.Println(err)
-			}
+			clientElement.egress <- bytepayload
 		}
 	}
 }

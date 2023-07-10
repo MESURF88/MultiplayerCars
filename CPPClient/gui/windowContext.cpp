@@ -1,5 +1,6 @@
 #include "windowContext.hpp"
-#include "raylib-cpp.hpp" // raylib has to be included in cpp file to avoid name conflicts with windows.h
+#include "version.hpp"
+
 static constexpr int screenWidth = 1600;
 static constexpr int screenHeight = 850;
 static constexpr int menuPanelHeight = 120;
@@ -20,7 +21,7 @@ static constexpr int chatSendBoxWidth = 1500;
 
 static const raylib::Color defaultMainTextColor = raylib::Color::LightGray();
 // the one and only window
-raylib::Window window(screenWidth, screenHeight, "car sim game alpha");
+raylib::Window window(screenWidth, screenHeight, "car sim game alpha v" + std::to_string(VERSION_NUM));
 
 static const Rectangle chatSendBoxRect = { 0, screenHeight - menuPanelHeight - chatSendBoxHeight, chatSendBoxWidth, chatSendBoxHeight };
 static const Rectangle chatSendButtonRect = { chatSendBoxWidth-1, screenHeight - menuPanelHeight - chatSendBoxHeight, 100, chatSendBoxHeight };
