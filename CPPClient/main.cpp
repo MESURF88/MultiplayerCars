@@ -493,8 +493,8 @@ int main() {
                         if (g_SafetyY < 0) g_SafetyY = 0;
                         else if (g_SafetyY >= cubicmap.height) g_SafetyY = cubicmap.height - 1;
 
-                        g_X = (playerPos.x - mapPosition.x + 0.5f) * SCALEFACTOR;
-                        g_Y = (playerPos.y - mapPosition.z + 0.5f) * SCALEFACTOR;
+                        g_X = (playerPos.x)* SCALEFACTOR;
+                        g_Y = (playerPos.y)* SCALEFACTOR;
 
                         // Check map collisions using image data and player position
                         // TODO: Improvement: Just check player surrounding cells for collision
