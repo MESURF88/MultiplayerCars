@@ -47,6 +47,7 @@ typedef enum {
 } GameState;
 
 // Globals
+static constexpr float SCALEFACTOR = 10.0f;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
@@ -57,7 +58,6 @@ ThreadSafeQueue<std::string> positionJsonQueue;
 std::atomic<bool> g_gameRunning = false;
 std::atomic<bool> g_handleBatch = false;
 GameState currentGameState = STATE_RACING; //TODO:
-
 
 // Handler classes
 //----------------------------------------------------------------------------------
@@ -457,7 +457,21 @@ int main() {
                     case STATE_RACING:
                         oldCamPos = camera.position;    // Store old camera position
 
-                        UpdateCamera(&camera, CAMERA_FIRST_PERSON);
+                        //UpdateCamera(&camera, CAMERA_FIRST_PERSON);
+                        UpdateCameraPro(&camera,
+                            {
+                            (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) * 1.0f/ SCALEFACTOR -      // Move forward-backward
+                                (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) * 1.0f/ SCALEFACTOR,
+                                (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) * 1.0f/ SCALEFACTOR -   // Move right-left
+                                (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) * 1.0f/ SCALEFACTOR,
+                                0.0f                                                // Move up-down
+                        },
+                            {
+                            GetMouseDelta().x * 0.05f,                            // Rotation: yaw
+                                GetMouseDelta().y * 0.05f,                            // Rotation: pitch
+                                0.0f                                                // Rotation: roll
+                        },
+                                GetMouseWheelMove() * 2.0f);                              // Move to target (zoom)
                         
                         if ((oldCamPos.x != camera.position.x) || (oldCamPos.z != camera.position.z))
                         {
@@ -476,6 +490,9 @@ int main() {
 
                         if (g_Y < 0) g_Y = 0;
                         else if (g_Y >= cubicmap.height) g_Y = cubicmap.height - 1;
+
+                        g_X *= SCALEFACTOR;
+                        g_Y *= SCALEFACTOR;
 
                         // Check map collisions using image data and player position
                         // TODO: Improvement: Just check player surrounding cells for collision
@@ -651,9 +668,7 @@ int main() {
                         DrawModel(model, mapPosition, 1.0f, WHITE);                     // Draw maze map
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
-                            //drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
-                            
-                            DrawCube({ (float)coords->second.m_coords.m_X, 0.0f, (float)coords->second.m_coords.m_Y }, 0.5f, 2.5f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
+                            DrawCube({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.5f, 1.5f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
                         }
                         EndMode3D();
 
