@@ -36,6 +36,15 @@ std::chrono::time_point<std::chrono::high_resolution_clock> stop1;
 std::chrono::time_point<std::chrono::high_resolution_clock> stop2;
 #endif
 
+// game states
+typedef enum {
+    STATE_MENU,
+    STATE_LOBBY,
+    STATE_COUNTDOWN,
+    STATE_RACING,
+    STATE_RESULTS,
+    STATE_GAME_OVER
+} GameState;
 
 // Globals
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
@@ -47,6 +56,7 @@ ThreadSafeQueue<std::string> guiJsonQueue;
 ThreadSafeQueue<std::string> positionJsonQueue;
 std::atomic<bool> g_gameRunning = false;
 std::atomic<bool> g_handleBatch = false;
+GameState currentGameState = STATE_RACING;
 
 
 // Handler classes
@@ -158,13 +168,13 @@ public:
 // end Handler classes
 
 int main() {
-    windowSetTargetFPS(60);
+    SetTargetFPS(60);
 
     // Initialize Handler Classes
     //--------------------------------------------------------------------------------------
     MessageRelay relay;
     ConnectionListener listener;
-    std::function<void(const std::string&)> stdf_message = [&](const std::string &s) { listener.onMessage(s); };
+    std::function<void(const std::string&)> stdf_message = [&](const std::string& s) { listener.onMessage(s); };
     //--------------------------------------------------------------------------------------
     // End Initialize Handler Classes
 
@@ -180,7 +190,7 @@ int main() {
 
     //login
 #if DEBUG_CLIENT
-    std::string host = "127.0.0.1"; 
+    std::string host = "127.0.0.1";
     std::string port = "3000";
     std::cout << "DEBUG MODE" << std::endl;
 #else
@@ -230,79 +240,129 @@ int main() {
             //----------------------------------------------------------------------------------
             // End Initialize gui variables here
 
+
+            // Initialize model/3d variables here
+            //----------------------------------------------------------------------------------
+            // Define the camera to look into our 3d world
+            Camera camera = { 0 };
+            camera.position = { 0.2f, 0.4f, 0.2f };    // Camera position
+            camera.target = { 0.185f, 0.4f, 0.0f };    // Camera looking at point
+            camera.up = { 0.0f, 1.0f, 0.0f };          // Camera up vector (rotation towards target)
+            camera.fovy = 45.0f;                                // Camera field-of-view Y
+            camera.projection = CAMERA_PERSPECTIVE;             // Camera projection type
+            Vector3 position = { 0.0f, 0.0f, 0.0f };            // Set model position
+            float playerRadius = 0.1f;  // Collision radius (player is modelled as a cilinder for collision)
+            int playerCellX = 0;
+            int playerCellY = 0;
+            Vector2 playerPos;
+
+            const char* pBuf = GetApplicationDirectory();
+            std::string exePath(pBuf);
+            // remove .exe
+            while (exePath.back() != '\\')
+            {
+                exePath.pop_back();
+                if (exePath.empty())
+                {
+                    break;
+                }
+            }
+
+            Image imMap = LoadImage(std::string(exePath + "resources\\cubicmap.png").c_str());      // Load cubicmap image (RAM)
+            Texture2D cubicmap = LoadTextureFromImage(imMap);       // Convert image to texture to display (VRAM)
+            Mesh mesh = GenMeshCubicmap(imMap, { 1.0f, 1.0f, 1.0f });
+            Model model = LoadModelFromMesh(mesh);
+
+            // NOTE: By default each cube is mapped to one part of texture atlas
+            Texture2D texture = LoadTexture(std::string(exePath + "resources\\cubicmap_atlas.png").c_str());    // Load map texture
+            model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texture;    // Set map diffuse texture
+
+            // Get map image data to be used for collision detection
+            Color* mapPixels = LoadImageColors(imMap);
+            UnloadImage(imMap);             // Unload image from RAM
+
+            Vector3 mapPosition = { -16.0f, 0.0f, -8.0f };  // Set model position
+            //----------------------------------------------------------------------------------
+            // End Initialize model/3d variables here
+
+            DisableCursor();                // Limit cursor to relative movement inside the window
+
+            // Main game loop
             g_gameRunning = true;
             std::vector<std::thread> m_threadList;
             m_threadList.push_back(std::thread(&MessageRelay::relayWorkerThread, relay));
             m_threadList.push_back(std::thread(&MessageRelay::relayBatchHandlerThread, relay));
             // Main game loop
-            while (windowShouldCloseWrapper() && g_gameRunning) {   // Detect window close button or ESC key
+            while (!WindowShouldClose() && g_gameRunning)   // Detect window close button or ESC key
+            {
                 // Update
                 //----------------------------------------------------------------------------------
                 // Update your variables here
-                    if (!positionJsonQueue.isEmpty()) // position update queue, get fifo
+
+                if (!positionJsonQueue.isEmpty()) // position update queue, get fifo
+                {
+                    // online json parser
+                    auto error = listener.m_jsonParser.parse(positionJsonQueue.front()).get(listener.m_parsedJson);
+                    if (!error)
                     {
-                        // online json parser
-                        auto error = listener.m_jsonParser.parse(positionJsonQueue.front()).get(listener.m_parsedJson);
-                        if (!error)
-                        {
-                            simdjson::dom::object& parsedJson = listener.m_parsedJson;
-                            try {
-                                int type = listener.m_parsedJson["Type"].get_uint64();
-                                switch (type)
+                        simdjson::dom::object& parsedJson = listener.m_parsedJson;
+                        try {
+                            int type = listener.m_parsedJson["Type"].get_uint64();
+                            switch (type)
+                            {
+                            case BEventType::BEventPositionUpdateMessage:
+                            {
+                                std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
+                                if (0 == gui_externalplayers.count(uuidOfPlayerCar))
                                 {
-                                    case BEventType::BEventPositionUpdateMessage:
-                                    {
-                                        std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
-                                        if (0 == gui_externalplayers.count(uuidOfPlayerCar))
-                                        {
-                                            // new player
-                                            gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson["X"].get_int64(), parsedJson["Y"].get_int64(), std::string{ parsedJson["Color"].get_string().value() }));
-                                            // need to send new player our own position, because client owns position
-                                            move = true;
-                                        }
-                                        else
-                                        {
-                                            gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_X = parsedJson["X"].get_int64();
-                                            gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Y = parsedJson["Y"].get_int64();
-                                            gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
-                                        }
-                                    }
-                                    break;
-                                    case BEventType::BEventPositionDebugUpdateMessage:
-                                    {
-                                        std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
-                                        if (0 == gui_externalplayers.count(uuidOfPlayerCar))
-                                        {
-                                            // new player
-                                            gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson["X"].get_int64(), parsedJson["Y"].get_int64(), std::string{ parsedJson["Color"].get_string().value() }));
-                                            // need to send new player our own position, because client owns position
-                                            move = true;
-                                        }
-                                        else
-                                        {
-                                            gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_X = parsedJson["X"].get_int64();
-                                            gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Y = parsedJson["Y"].get_int64();
-                                            gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
-                                        }
-    #ifdef TIMING_BENCHMARK
-                                        stop2 = std::chrono::high_resolution_clock::now();
-                                        auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(stop0 - start);
-                                        auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(stop1 - start);
-                                        auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(stop2 - start);
-                                        // To get the value of duration use the count()
-                                        // member function on the duration object
-                                        timingReport << "Loopback: sendpos dur0: " << duration0.count() << " [msec]" << std::endl;
-                                        timingReport << "Loopback: diff dur0 dur1: " << duration1.count() - duration0.count() << " [msec]" << std::endl;
-                                        timingReport << "Loopback: Move time after json parse dur2: " << duration2.count() << " [msec]" << std::endl;
-    #endif
-                                    }
-                                    break;
+                                    // new player
+                                    gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson["X"].get_int64(), parsedJson["Y"].get_int64(), std::string{ parsedJson["Color"].get_string().value() }));
+                                    // need to send new player our own position, because client owns position
+                                    move = true;
+                                }
+                                else
+                                {
+                                    gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_X = parsedJson["X"].get_int64();
+                                    gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Y = parsedJson["Y"].get_int64();
+                                    gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
                                 }
                             }
-                            catch (std::out_of_range& e)
+                            break;
+                            case BEventType::BEventPositionDebugUpdateMessage:
                             {
-                                std::cout << "positionJsonQueue Update out of range: " << e.what() << std::endl;
+                                std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
+                                if (0 == gui_externalplayers.count(uuidOfPlayerCar))
+                                {
+                                    // new player
+                                    gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson["X"].get_int64(), parsedJson["Y"].get_int64(), std::string{ parsedJson["Color"].get_string().value() }));
+                                    // need to send new player our own position, because client owns position
+                                    move = true;
+                                }
+                                else
+                                {
+                                    gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_X = parsedJson["X"].get_int64();
+                                    gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Y = parsedJson["Y"].get_int64();
+                                    gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
+                                }
+#ifdef TIMING_BENCHMARK
+                                stop2 = std::chrono::high_resolution_clock::now();
+                                auto duration0 = std::chrono::duration_cast<std::chrono::microseconds>(stop0 - start);
+                                auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(stop1 - start);
+                                auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(stop2 - start);
+                                // To get the value of duration use the count()
+                                // member function on the duration object
+                                timingReport << "Loopback: sendpos dur0: " << duration0.count() << " [msec]" << std::endl;
+                                timingReport << "Loopback: diff dur0 dur1: " << duration1.count() - duration0.count() << " [msec]" << std::endl;
+                                timingReport << "Loopback: Move time after json parse dur2: " << duration2.count() << " [msec]" << std::endl;
+#endif
                             }
+                            break;
+                            }
+                        }
+                        catch (std::out_of_range& e)
+                        {
+                            std::cout << "positionJsonQueue Update out of range: " << e.what() << std::endl;
+                        }
                     }
                     else
                     {
@@ -317,49 +377,49 @@ int main() {
                     auto error = listener.m_jsonParser.parse(guiJsonQueue.front()).get(listener.m_parsedJson);
                     if (!error)
                     {
-                        simdjson::dom::object &parsedJson = listener.m_parsedJson;
+                        simdjson::dom::object& parsedJson = listener.m_parsedJson;
                         try {
                             int type = listener.m_parsedJson["Type"].get_uint64();
                             switch (type)
                             {
                             case BEventType::BEventTimeStampMessage:
+                            {
+                                gui_timestamp = std::string{ parsedJson["TimeStamp"].get_string().value() };
+                            }
+                            break;
+                            case BEventType::BEventColorUpdateMessage:
+                            {
+                                std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
+                                if (gui_externalplayers.count(uuidOfPlayerCar))
                                 {
-                                    gui_timestamp = std::string{ parsedJson["TimeStamp"].get_string().value() };
+                                    gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
                                 }
-                                break;
-                                case BEventType::BEventColorUpdateMessage:
+                            }
+                            break;
+                            case BEventType::BEventExternalConnectionExitMessage:
+                            {
+                                std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
+                                if (gui_externalplayers.count(uuidOfPlayerCar))
                                 {
-                                    std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
-                                    if (gui_externalplayers.count(uuidOfPlayerCar))
-                                    {
-                                        gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
-                                    }
+                                    gui_externalplayers.erase(uuidOfPlayerCar);
                                 }
-                                break;
-                                case BEventType::BEventExternalConnectionExitMessage:
+                            }
+                            break;
+                            case BEventType::BEventTextUpdateMessage:
+                            {
+                                std::string uuidOfSender = std::string{ parsedJson["FromUUID"].get_string().value() };
+                                // sender is not current player
+                                if (uuidOfSender != session->getClientUUID())
                                 {
-                                    std::string uuidOfPlayerCar = std::string{ parsedJson["UUID"].get_string().value() };
-                                    if (gui_externalplayers.count(uuidOfPlayerCar))
-                                    {
-                                        gui_externalplayers.erase(uuidOfPlayerCar);
-                                    }
+                                    // only display last 5 messages for now...
+                                    std::string senderColor = std::string{ parsedJson["Color"].get_string().value() };
+                                    std::string senderText = std::string{ parsedJson["Text"].get_string().value() };
+                                    std::string senderTimeStamp = std::string{ parsedJson["TimeStamp"].get_string().value() };
+                                    gui_textmessagesdisplay.pop_back();
+                                    gui_textmessagesdisplay.push_front(TextContext(true, senderColor, senderText, senderTimeStamp));
                                 }
-                                break;
-                                case BEventType::BEventTextUpdateMessage:
-                                {
-                                    std::string uuidOfSender = std::string{ parsedJson["FromUUID"].get_string().value() };
-                                    // sender is not current player
-                                    if (uuidOfSender != session->getClientUUID())
-                                    {
-                                        // only display last 5 messages for now...
-                                        std::string senderColor = std::string{ parsedJson["Color"].get_string().value() };
-                                        std::string senderText = std::string{ parsedJson["Text"].get_string().value() };
-                                        std::string senderTimeStamp = std::string{ parsedJson["TimeStamp"].get_string().value() };
-                                        gui_textmessagesdisplay.pop_back();
-                                        gui_textmessagesdisplay.push_front(TextContext(true, senderColor, senderText, senderTimeStamp));
-                                    }
-                                }
-                                break;
+                            }
+                            break;
                             }
                         }
                         catch (std::out_of_range& e)
@@ -377,201 +437,288 @@ int main() {
                 //----------------------------------------------------------------------------------
                 // End Update
 
-                if (windowIsKeyPressedUp())
+                // Update and input handling
+                //----------------------------------------------------------------------------------
+                switch (currentGameState)
                 {
-                    if (g_Y > 1)
-                    {
-                        g_Y-=2;
-                        move = true;
-                    }
-                }
-                if (windowIsKeyPressedDown())
-                {
-                    if (g_Y < (windowYBoundary() - getCarHeight() - 1))
-                    {
-                        g_Y+=2;
-                        move = true;
-                    }
-                }
-                if (windowIsKeyPressedLeft())
-                {
-                    if (g_X > 1)
-                    {
-                        g_X-=2;
-                        move = true;
-                    }
-                }
-                if (windowIsKeyPressedRight())
-                {
-                    if (g_X < (windowScreenWidth() - getCarWidth() -1))
-                    {
-                        g_X+=2;
-                        move = true;
-                    }
-                }
-                if (windowIsMouseButtonPressed())
-                {
-                    int colorSelection = windowIsMouseInColorSelection();
-                    switch (colorSelection)
-                    {
-                    case colorSelectionType::NOCOLOR:
-                        break;
-                    case colorSelectionType::BLUECOLOR:
-                    case colorSelectionType::GREENCOLOR:
-                    case colorSelectionType::REDCOLOR:
-                    case colorSelectionType::MAGENTACOLOR:
-                    case colorSelectionType::ORANGECOLOR:
-                    case colorSelectionType::YELLOWCOLOR:
-                    case colorSelectionType::SKYBLUECOLOR:
-                    case colorSelectionType::LIGHTGREYCOLOR:
-                        if (windowGetColorSelectionMap().count(colorSelection))
+                    case STATE_RACING:
+                        Vector3 oldCamPos = camera.position;    // Store old camera position
+
+                        UpdateCamera(&camera, CAMERA_FIRST_PERSON);
+                        
+                        if ((oldCamPos.x != camera.position.x) || (oldCamPos.z != camera.position.z))
                         {
-                            setCarColor(windowGetColorSelectionMap().at(colorSelection).hexValue);
-                            session->sendColorUpdate(windowGetColorSelectionMap().at(colorSelection).hexString);
+                            move = true;
+                        }
+
+                        // Check player collision (we simplify to 2D collision detection)
+                        playerPos = { camera.position.x, camera.position.z };
+
+                        playerCellX = (int)(playerPos.x - mapPosition.x + 0.5f);
+                        playerCellY = (int)(playerPos.y - mapPosition.z + 0.5f);
+
+                        // Out-of-limits security check
+                        if (playerCellX < 0) playerCellX = 0;
+                        else if (playerCellX >= cubicmap.width) playerCellX = cubicmap.width - 1;
+
+                        if (playerCellY < 0) playerCellY = 0;
+                        else if (playerCellY >= cubicmap.height) playerCellY = cubicmap.height - 1;
+
+                        // Check map collisions using image data and player position
+                        // TODO: Improvement: Just check player surrounding cells for collision
+                        for (int y = 0; y < cubicmap.height; y++)
+                        {
+                            for (int x = 0; x < cubicmap.width; x++)
+                            {
+                                if ((mapPixels[y * cubicmap.width + x].r == 255) &&       // Collision: white pixel, only check R channel
+                                    (CheckCollisionCircleRec(playerPos, playerRadius,
+                                        {
+                                    mapPosition.x - 0.5f + x * 1.0f, mapPosition.z - 0.5f + y * 1.0f, 1.0f, 1.0f
+                                        })))
+                                {
+                                    // Collision detected, reset camera position
+                                    camera.position = oldCamPos;
+                                }
+                            }
                         }
                         break;
-                    default:
+                    case STATE_LOBBY:
+                        if (windowIsKeyPressedUp())
+                        {
+                            if (g_Y > 1)
+                            {
+                                g_Y -= 2;
+                                move = true;
+                            }
+                        }
+                        if (windowIsKeyPressedDown())
+                        {
+                            if (g_Y < (windowYBoundary() - getCarHeight() - 1))
+                            {
+                                g_Y += 2;
+                                move = true;
+                            }
+                        }
+                        if (windowIsKeyPressedLeft())
+                        {
+                            if (g_X > 1)
+                            {
+                                g_X -= 2;
+                                move = true;
+                            }
+                        }
+                        if (windowIsKeyPressedRight())
+                        {
+                            if (g_X < (windowScreenWidth() - getCarWidth() - 1))
+                            {
+                                g_X += 2;
+                                move = true;
+                            }
+                        }
+                        if (windowIsMouseButtonPressed())
+                        {
+                            int colorSelection = windowIsMouseInColorSelection();
+                            switch (colorSelection)
+                            {
+                            case colorSelectionType::NOCOLOR:
+                                break;
+                            case colorSelectionType::BLUECOLOR:
+                            case colorSelectionType::GREENCOLOR:
+                            case colorSelectionType::REDCOLOR:
+                            case colorSelectionType::MAGENTACOLOR:
+                            case colorSelectionType::ORANGECOLOR:
+                            case colorSelectionType::YELLOWCOLOR:
+                            case colorSelectionType::SKYBLUECOLOR:
+                            case colorSelectionType::LIGHTGREYCOLOR:
+                                if (windowGetColorSelectionMap().count(colorSelection))
+                                {
+                                    setCarColor(windowGetColorSelectionMap().at(colorSelection).hexValue);
+                                    session->sendColorUpdate(windowGetColorSelectionMap().at(colorSelection).hexString);
+                                }
+                                break;
+                            default:
+                                break;
+                            }
+                            if (windowIsMouseCollidesChatBox())
+                            {
+                                mouseOnText = true;
+                            }
+                            else
+                            {
+                                mouseOnText = false;
+                            }
+                            if (windowIsMouseCollidesChatSendButton())
+                            {
+                                text = true;
+                                // append locally first the broadcast
+                                gui_textmessagesdisplay.pop_back();
+                                gui_textmessagesdisplay.push_front(TextContext(false, getCarColorString(), std::string(textmessage), gui_timestamp));
+                            }
+                            if (windowIsMouseInEscape())
+                            {
+                                g_gameRunning = false;
+                            }
+                        }
+                        // text handling
+                        if (mouseOnText)
+                        {
+                            // Set the window's cursor to the I-Beam
+                            windowSetMouseCursorIBeam();
+
+                            // Get char pressed (unicode character) on the queue
+                            int key = windowGetCharPressed();
+
+                            // Check if more characters have been pressed on the same frame
+                            while (key > 0)
+                            {
+                                // NOTE: Only allow keys in range [32..125]
+                                if ((key >= 32) && (key <= 125) && (letterCount < MAX_INPUT_CHARS))
+                                {
+                                    textmessage[letterCount] = (char)key;
+                                    textmessage[letterCount + 1] = '\0'; // Add null terminator at the end of the string.
+                                    letterCount++;
+                                }
+
+                                key = windowGetCharPressed();  // Check next character in the queue
+                            }
+
+                            if (windowIsKeyPressedBackSpace())
+                            {
+                                letterCount--;
+                                if (letterCount < 0) letterCount = 0;
+                                textmessage[letterCount] = '\0';
+                            }
+                            if (windowIsKeyReleasedEnter())
+                            {
+                                text = true;
+                                // append locally first the broadcast
+                                gui_textmessagesdisplay.pop_back();
+                                gui_textmessagesdisplay.push_front(TextContext(false, getCarColorString(), std::string(textmessage), gui_timestamp));
+                            }
+                        }
+                        else
+                        {
+                            windowSetMouseCursorDefault();
+                        }
+                        if (mouseOnText) framesCounter++;
+                        else framesCounter = 0;
+                        if (text)
+                        {
+                            session->sendTextMessage("", "", std::string(textmessage)); // global is true, default current color
+                            text = false;
+                        }
                         break;
-                    }
-                    if (windowIsMouseCollidesChatBox())
-                    {
-                        mouseOnText = true;
-                    }
-                    else
-                    {
-                        mouseOnText = false;
-                    }
-                    if (windowIsMouseCollidesChatSendButton())
-                    {
-                        text = true;
-                        // append locally first the broadcast
-                        gui_textmessagesdisplay.pop_back();
-                        gui_textmessagesdisplay.push_front(TextContext(false, getCarColorString(), std::string(textmessage), gui_timestamp));
-                    }
-                    if (windowIsMouseInEscape())
-                    {
-                        g_gameRunning = false;
-                    }
                 }
+
                 if (move)
                 {
 #ifdef TIMING_BENCHMARK
                     start = std::chrono::high_resolution_clock::now();
 #endif
-                    session->sendPosition(g_X, g_Y);    
+                    session->sendPosition(g_X, g_Y);
 #ifdef TIMING_BENCHMARK
                     stop0 = std::chrono::high_resolution_clock::now();
 #endif
                     move = false;
                 }
-                // text handling
-                if (mouseOnText)
-                {
-                    // Set the window's cursor to the I-Beam
-                    windowSetMouseCursorIBeam();
 
-                    // Get char pressed (unicode character) on the queue
-                    int key = windowGetCharPressed();
+                //----------------------------------------------------------------------------------
+                // End Update and input handling
 
-                    // Check if more characters have been pressed on the same frame
-                    while (key > 0)
-                    {
-                        // NOTE: Only allow keys in range [32..125]
-                        if ((key >= 32) && (key <= 125) && (letterCount < MAX_INPUT_CHARS))
-                        {
-                            textmessage[letterCount] = (char)key;
-                            textmessage[letterCount + 1] = '\0'; // Add null terminator at the end of the string.
-                            letterCount++;
-                        }
-
-                        key = windowGetCharPressed();  // Check next character in the queue
-                    }
-
-                    if (windowIsKeyPressedBackSpace())
-                    {
-                        letterCount--;
-                        if (letterCount < 0) letterCount = 0;
-                        textmessage[letterCount] = '\0';
-                    }
-                    if (windowIsKeyReleasedEnter())
-                    {
-                        text = true;
-                        // append locally first the broadcast
-                        gui_textmessagesdisplay.pop_back();
-                        gui_textmessagesdisplay.push_front(TextContext(false, getCarColorString(), std::string(textmessage), gui_timestamp));
-                    }
-                }
-                else
-                {
-                    windowSetMouseCursorDefault();
-                }
-                if (mouseOnText) framesCounter++;
-                else framesCounter = 0;
-                if (text)
-                {
-                    session->sendTextMessage("", "", std::string(textmessage)); // global is true, default current color
-                    text = false;
-                }
                 // Draw
                 //----------------------------------------------------------------------------------
-                windowBeginDrawing();
-                windowDrawBackground();
-                drawDefaultSquaresColor();
-                for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
+                switch (currentGameState)
                 {
-                    drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
+                    case STATE_RACING:
+                        BeginDrawing();
+
+                        ClearBackground(RAYWHITE);
+
+                        BeginMode3D(camera);
+                        DrawModel(model, mapPosition, 1.0f, WHITE);                     // Draw maze map
+                        for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
+                        {
+                            //drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
+                            
+                            DrawCube({ (float)coords->second.m_coords.m_X, 0.0f, (float)coords->second.m_coords.m_Y }, 0.5f, 0.5f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
+                        }
+                        EndMode3D();
+
+                        DrawFPS(10, 10);
+
+                        EndDrawing();
+                        break;
+                    case STATE_LOBBY:
+                        BeginDrawing();
+                        windowDrawBackground();
+                        drawDefaultSquaresColor();
+                        for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
+                        {
+                            drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
+                        }
+                        drawCar(g_X, g_Y);
+                        if (g_handleBatch && (positionJsonQueue.getSize() > MAX_BATCHED_POSITIONS_THRESHOLD))
+                        {
+                            // batching losing a few is not an issue since positions are pixel updates
+                            for (int i = 0; i < positionJsonQueue.getSize() - 1; i++)
+                            {
+                                positionJsonQueue.pop();
+                            }
+                            g_handleBatch = false;
+                            // skip drawing text if behind on new positions to update
+                            continue;
+                        }
+                        drawTextTestBox(gui_timestamp);
+                        drawChatBoxContainer();
+                        drawChatSendBox(mouseOnText, textmessage);
+                        drawSendTextButton();
+                        if (mouseOnText)
+                        {
+                            if (letterCount < MAX_INPUT_CHARS)
+                            {
+                                // Draw blinking underscore char
+                                drawChatSendBoxBlinkingUnderscore(framesCounter, textmessage);
+                            }
+                        }
+                        int idx = 0;
+                        for (const TextContext& context : gui_textmessagesdisplay)
+                        {
+                            drawTextLine(idx, context);
+                            idx++;
+                        }
+                        drawEscButton();
+                        EndDrawing();
+                        break;
                 }
-                drawCar(g_X, g_Y);
-                if (g_handleBatch && (positionJsonQueue.getSize() > MAX_BATCHED_POSITIONS_THRESHOLD))
-                {
-                    // batching losing a few is not an issue since positions are pixel updates
-                    for (int i = 0; i < positionJsonQueue.getSize()-1; i++)
-                    {
-                        positionJsonQueue.pop();
-                    }
-                    g_handleBatch = false;
-                    // skip drawing text if behind on new positions to update
-                    continue;
-                }
-                drawTextTestBox(gui_timestamp);
-                drawChatBoxContainer();
-                drawChatSendBox(mouseOnText, textmessage);
-                drawSendTextButton();
-                if (mouseOnText)
-                {
-                    if (letterCount < MAX_INPUT_CHARS)
-                    {
-                        // Draw blinking underscore char
-                        drawChatSendBoxBlinkingUnderscore(framesCounter, textmessage);
-                    }
-                }
-                int idx = 0;
-                for (const TextContext &context: gui_textmessagesdisplay)
-                {
-                    drawTextLine(idx, context);
-                    idx++;
-                }
-                drawEscButton();
-                windowEndDrawing();
                 //----------------------------------------------------------------------------------
                 // End Draw
 #ifdef TIMING_BENCHMARK
                 stop1 = std::chrono::high_resolution_clock::now();
 #endif
             }
+
+            // De-Initialization
+            //--------------------------------------------------------------------------------------
+            UnloadImageColors(mapPixels);   // Unload color array
+
+            UnloadTexture(cubicmap);        // Unload cubicmap texture
+            UnloadTexture(texture);         // Unload map texture
+            UnloadModel(model);             // Unload map model
+
             session->closeConnection();
             g_gameRunning = false;
             wsUpdatedJsonQueue.push(""); // get out of deadlock
             for (auto& t : m_threadList) t.join();
         }
     }
-    else 
+    else
     {
         std::cout << "Error: couldn't login, http status code: " << statusCode << std::endl;
     }
-    windowCloseWindow();
+    CloseWindow();
 #ifdef TIMING_BENCHMARK
     timingReport.close();
 #endif
     return 0;
 }
+
