@@ -665,10 +665,10 @@ int main() {
                         ClearBackground(RAYWHITE);
 
                         BeginMode3D(camera);
-                        DrawModel(model, mapPosition, 1.0f, WHITE);                     // Draw maze map
+                        DrawModel(model, mapPosition, 1.0f, WHITE);                     // Draw map
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
-                            DrawCube({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.5f, 1.5f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
+                            DrawCube({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.5f, 1.0f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
                         }
                         EndMode3D();
 
