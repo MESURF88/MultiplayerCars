@@ -250,6 +250,7 @@ int main() {
             camera.up = { 0.0f, 1.0f, 0.0f };          // Camera up vector (rotation towards target)
             camera.fovy = 45.0f;                                // Camera field-of-view Y
             camera.projection = CAMERA_PERSPECTIVE;             // Camera projection type
+            Vector3 oldCamPos;
             Vector3 position = { 0.0f, 0.0f, 0.0f };            // Set model position
             float playerRadius = 0.1f;  // Collision radius (player is modelled as a cilinder for collision)
             int playerCellX = 0;
@@ -456,7 +457,7 @@ int main() {
                 switch (currentGameState)
                 {
                     case STATE_RACING:
-                        Vector3 oldCamPos = camera.position;    // Store old camera position
+                        oldCamPos = camera.position;    // Store old camera position
 
                         UpdateCamera(&camera, CAMERA_FIRST_PERSON);
                         
