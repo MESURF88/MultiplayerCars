@@ -47,7 +47,7 @@ typedef enum {
 } GameState;
 
 // Globals
-static constexpr float SCALEFACTOR = 10.0f;
+static constexpr float SCALEFACTOR = 1000.0f;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
@@ -237,6 +237,8 @@ int main() {
             }
             int g_X = 0;
             int g_Y = 0;
+            int g_SafetyX = 0;
+            int g_SafetyY = 0;
             //----------------------------------------------------------------------------------
             // End Initialize gui variables here
 
@@ -460,10 +462,10 @@ int main() {
                         //UpdateCamera(&camera, CAMERA_FIRST_PERSON);
                         UpdateCameraPro(&camera,
                             {
-                            (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) * 1.0f/ SCALEFACTOR -      // Move forward-backward
-                                (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) * 1.0f/ SCALEFACTOR,
-                                (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) * 1.0f/ SCALEFACTOR -   // Move right-left
-                                (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) * 1.0f/ SCALEFACTOR,
+                            (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) * 0.1f -      // Move forward-backward
+                                (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) * 0.1f,
+                                (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) * 0.1f -   // Move right-left
+                                (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) * 0.1f,
                                 0.0f                                                // Move up-down
                         },
                             {
@@ -481,18 +483,18 @@ int main() {
                         // Check player collision (we simplify to 2D collision detection)
                         playerPos = { camera.position.x, camera.position.z };
 
-                        g_X = (int)(playerPos.x - mapPosition.x + 0.5f);
-                        g_Y = (int)(playerPos.y - mapPosition.z + 0.5f);
+                        g_SafetyX = (int)(playerPos.x - mapPosition.x + 0.5f);
+                        g_SafetyY = (int)(playerPos.y - mapPosition.z + 0.5f);
 
                         // Out-of-limits security check
-                        if (g_X < 0) g_X = 0;
-                        else if (g_X >= cubicmap.width) g_X = cubicmap.width - 1;
+                        if (g_SafetyX < 0) g_SafetyX = 0;
+                        else if (g_SafetyX >= cubicmap.width) g_SafetyX = cubicmap.width - 1;
 
-                        if (g_Y < 0) g_Y = 0;
-                        else if (g_Y >= cubicmap.height) g_Y = cubicmap.height - 1;
+                        if (g_SafetyY < 0) g_SafetyY = 0;
+                        else if (g_SafetyY >= cubicmap.height) g_SafetyY = cubicmap.height - 1;
 
-                        g_X *= SCALEFACTOR;
-                        g_Y *= SCALEFACTOR;
+                        g_X = (playerPos.x - mapPosition.x + 0.5f) * SCALEFACTOR;
+                        g_Y = (playerPos.y - mapPosition.z + 0.5f) * SCALEFACTOR;
 
                         // Check map collisions using image data and player position
                         // TODO: Improvement: Just check player surrounding cells for collision
