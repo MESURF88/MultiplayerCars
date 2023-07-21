@@ -198,11 +198,15 @@ target_include_directories(${ProjName} PRIVATE
 )
 target_compile_features(${ProjName} PRIVATE cxx_std_17)
 
-
 if (WIN32)
 file(COPY "C:/Program\ Files\ (x86)/cpr/include/cpr/cprver.h" DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/cpr/include/cpr")
 endif()
 
+add_custom_command(TARGET ${ProjName} PRE_BUILD       
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+        $<TARGET_FILE_DIR:${ProjName}>/resources) 
+		
 if (WIN32)
 add_custom_command(TARGET ${ProjName} POST_BUILD       
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

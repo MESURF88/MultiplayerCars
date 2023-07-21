@@ -56,7 +56,7 @@ ThreadSafeQueue<std::string> guiJsonQueue;
 ThreadSafeQueue<std::string> positionJsonQueue;
 std::atomic<bool> g_gameRunning = false;
 std::atomic<bool> g_handleBatch = false;
-GameState currentGameState = STATE_RACING;
+GameState currentGameState = STATE_RACING; //TODO:
 
 
 // Handler classes
@@ -268,24 +268,38 @@ int main() {
                 }
             }
 
+#if defined(WIN32)  
             Image imMap = LoadImage(std::string(exePath + "resources\\cubicmap.png").c_str());      // Load cubicmap image (RAM)
+#else
+            Image imMap = LoadImage(std::string(exePath + "resources/cubicmap.png").c_str());
+#endif
             Texture2D cubicmap = LoadTextureFromImage(imMap);       // Convert image to texture to display (VRAM)
             Mesh mesh = GenMeshCubicmap(imMap, { 1.0f, 1.0f, 1.0f });
             Model model = LoadModelFromMesh(mesh);
 
             // NOTE: By default each cube is mapped to one part of texture atlas
+#if defined(WIN32)  
             Texture2D texture = LoadTexture(std::string(exePath + "resources\\cubicmap_atlas.png").c_str());    // Load map texture
+#else
+            Texture2D texture = LoadTexture(std::string(exePath + "resources/cubicmap_atlas.png").c_str());
+#endif
             model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texture;    // Set map diffuse texture
 
             // Get map image data to be used for collision detection
             Color* mapPixels = LoadImageColors(imMap);
             UnloadImage(imMap);             // Unload image from RAM
 
+#if defined(WIN32)  
+            //TODO: Model carModel = LoadModel(std::string(exePath + "resources\\NormalCar1.obj").c_str());
+#else
+            //TODO: Model carModel = LoadModel(std::string(exePath + "resources/NormalCar1.obj").c_str());
+#endif
+
             Vector3 mapPosition = { -16.0f, 0.0f, -8.0f };  // Set model position
             //----------------------------------------------------------------------------------
             // End Initialize model/3d variables here
 
-            DisableCursor();                // Limit cursor to relative movement inside the window
+            DisableCursor();                // Limit cursor to relative movement inside the window TODO:
 
             // Main game loop
             g_gameRunning = true;
@@ -704,6 +718,7 @@ int main() {
             UnloadTexture(cubicmap);        // Unload cubicmap texture
             UnloadTexture(texture);         // Unload map texture
             UnloadModel(model);             // Unload map model
+            //TODO: UnloadModel(carModel);          // Unload car model
 
             session->closeConnection();
             g_gameRunning = false;
