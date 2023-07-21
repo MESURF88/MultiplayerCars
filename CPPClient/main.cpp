@@ -253,8 +253,6 @@ int main() {
             Vector3 oldCamPos;
             Vector3 position = { 0.0f, 0.0f, 0.0f };            // Set model position
             float playerRadius = 0.1f;  // Collision radius (player is modelled as a cilinder for collision)
-            int playerCellX = 0;
-            int playerCellY = 0;
             Vector2 playerPos;
 
             const char* pBuf = GetApplicationDirectory();
@@ -469,15 +467,15 @@ int main() {
                         // Check player collision (we simplify to 2D collision detection)
                         playerPos = { camera.position.x, camera.position.z };
 
-                        playerCellX = (int)(playerPos.x - mapPosition.x + 0.5f);
-                        playerCellY = (int)(playerPos.y - mapPosition.z + 0.5f);
+                        g_X = (int)(playerPos.x - mapPosition.x + 0.5f);
+                        g_Y = (int)(playerPos.y - mapPosition.z + 0.5f);
 
                         // Out-of-limits security check
-                        if (playerCellX < 0) playerCellX = 0;
-                        else if (playerCellX >= cubicmap.width) playerCellX = cubicmap.width - 1;
+                        if (g_X < 0) g_X = 0;
+                        else if (g_X >= cubicmap.width) g_X = cubicmap.width - 1;
 
-                        if (playerCellY < 0) playerCellY = 0;
-                        else if (playerCellY >= cubicmap.height) playerCellY = cubicmap.height - 1;
+                        if (g_Y < 0) g_Y = 0;
+                        else if (g_Y >= cubicmap.height) g_Y = cubicmap.height - 1;
 
                         // Check map collisions using image data and player position
                         // TODO: Improvement: Just check player surrounding cells for collision
@@ -631,6 +629,10 @@ int main() {
                     start = std::chrono::high_resolution_clock::now();
 #endif
                     session->sendPosition(g_X, g_Y);
+                    if (g_Y != 0)
+                    {
+                        int emp = 0;
+                }
 #ifdef TIMING_BENCHMARK
                     stop0 = std::chrono::high_resolution_clock::now();
 #endif
@@ -656,6 +658,10 @@ int main() {
                             //drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
                             
                             DrawCube({ (float)coords->second.m_coords.m_X, 0.0f, (float)coords->second.m_coords.m_Y }, 0.5f, 0.5f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
+                            if (coords->second.m_coords.m_X != 0)
+                            {
+                                int tmp = 0;
+                            }
                         }
                         EndMode3D();
 
