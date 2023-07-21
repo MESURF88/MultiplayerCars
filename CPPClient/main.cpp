@@ -487,7 +487,7 @@ int main() {
                         // Out-of-limits security check
                         if (g_X < 0) g_X = 0;
                         else if (g_X >= cubicmap.width) g_X = cubicmap.width - 1;
-                        std::cout << g_X << " " << cubicmap.width << " " <<cubicmap.height << std::endl ;
+
                         if (g_Y < 0) g_Y = 0;
                         else if (g_Y >= cubicmap.height) g_Y = cubicmap.height - 1;
 
