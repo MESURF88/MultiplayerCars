@@ -629,10 +629,6 @@ int main() {
                     start = std::chrono::high_resolution_clock::now();
 #endif
                     session->sendPosition(g_X, g_Y);
-                    if (g_Y != 0)
-                    {
-                        int emp = 0;
-                }
 #ifdef TIMING_BENCHMARK
                     stop0 = std::chrono::high_resolution_clock::now();
 #endif
@@ -657,11 +653,7 @@ int main() {
                         {
                             //drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
                             
-                            DrawCube({ (float)coords->second.m_coords.m_X, 0.0f, (float)coords->second.m_coords.m_Y }, 0.5f, 0.5f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
-                            if (coords->second.m_coords.m_X != 0)
-                            {
-                                int tmp = 0;
-                            }
+                            DrawCube({ (float)coords->second.m_coords.m_X, 0.0f, (float)coords->second.m_coords.m_Y }, 0.5f, 2.5f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
                         }
                         EndMode3D();
 
