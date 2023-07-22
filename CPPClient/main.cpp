@@ -306,7 +306,7 @@ int main() {
 #if defined(WIN32)  
             Model carModel = LoadModel(std::string(exePath + "resources\\raceFuture.obj").c_str());
 #else
-            //TODO: Model carModel = LoadModel(std::string(exePath + "resources/raceFuture.obj").c_str());
+            Model carModel = LoadModel(std::string(exePath + "resources/raceFuture.obj").c_str());
 #endif
 
             Vector3 mapPosition = { -16.0f, 0.0f, -8.0f };  // Set model position
@@ -746,18 +746,18 @@ int main() {
                         DrawFPS(10, 10);
                         DrawTextureRec(target3DArea.texture, { 0, 0, (float)target3DArea.texture.width, (float)-target3DArea.texture.height }, { 0, 0 }, WHITE);
 
-                        DrawRectangle(1300, 5, 245, 115, Fade(SKYBLUE, 0.5f));
-                        DrawRectangleLines(1300, 5, 245, 115, BLUE);
+                        DrawRectangle(1400, 5, 245, 115, Fade(SKYBLUE, 0.45f));
+                        DrawRectangleLines(1400, 5, 245, 115, DARKBLUE);
 
                         // draw camera player status
-                        DrawText("Camera status:", 1310, 15, 12, BLACK);
-                        DrawText("Use C Key to toggle cursor", 1310, 30, 12, BLACK);
-                        DrawText("Use Left Shift Key to return to lobby", 1310, 45, 12, BLACK);
+                        DrawText("Camera status:", 1410, 15, 12, BLACK);
+                        DrawText("Use C Key to toggle cursor", 1410, 30, 12, BLACK);
+                        DrawText("Use Left Shift Key to return to lobby", 1410, 45, 12, BLACK);
                         DrawText(TextFormat("- Projection: %s", (camera.projection == CAMERA_PERSPECTIVE) ? "PERSPECTIVE" :
-                            (camera.projection == CAMERA_ORTHOGRAPHIC) ? "ORTHOGRAPHIC" : "CUSTOM"), 1310, 60, 12, BLACK);
-                        DrawText(TextFormat("- Position: (%06.3f, %06.3f, %06.3f)", camera.position.x, camera.position.y, camera.position.z), 1310, 75, 12, BLACK);
-                        DrawText(TextFormat("- Target: (%06.3f, %06.3f, %06.3f)", camera.target.x, camera.target.y, camera.target.z), 1310, 90, 12, BLACK);
-                        DrawText(TextFormat("- Up: (%06.3f, %06.3f, %06.3f)", camera.up.x, camera.up.y, camera.up.z), 1310, 105, 12, BLACK);
+                            (camera.projection == CAMERA_ORTHOGRAPHIC) ? "ORTHOGRAPHIC" : "CUSTOM"), 1410, 60, 12, BLACK);
+                        DrawText(TextFormat("- Position: (%06.3f, %06.3f, %06.3f)", camera.position.x, camera.position.y, camera.position.z), 1410, 75, 12, BLACK);
+                        DrawText(TextFormat("- Target: (%06.3f, %06.3f, %06.3f)", camera.target.x, camera.target.y, camera.target.z), 1410, 90, 12, BLACK);
+                        DrawText(TextFormat("- Up: (%06.3f, %06.3f, %06.3f)", camera.up.x, camera.up.y, camera.up.z), 1410, 105, 12, BLACK);
 
                         // TODO: make function
                         drawDefaultSquaresColor();
