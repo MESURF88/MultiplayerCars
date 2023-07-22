@@ -129,7 +129,7 @@ void drawTextTestBox(std::string testStr)
 
 void drawChatBoxContainer()
 {
-	DrawLine(0, screenHeight - menuPanelHeight - chatPanelHeight, screenWidth, screenHeight - menuPanelHeight - chatPanelHeight, defaultMainTextColor);
+	DrawLine(0, screenHeight - menuPanelHeight - chatPanelHeight, screenWidth, screenHeight - menuPanelHeight - chatPanelHeight, BLACK);
 }
 
 void drawChatSendBox(bool mouseOnText, const char *text)
