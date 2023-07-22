@@ -478,11 +478,11 @@ int main() {
                                 0.0f                                                // Move up-down
                         },
                             {
-                            GetMouseDelta().x * 0.05f,                            // Rotation: yaw
+                                GetMouseDelta().x * 0.05f,                            // Rotation: yaw
                                 GetMouseDelta().y * 0.05f,                            // Rotation: pitch
                                 0.0f                                                // Rotation: roll
                         },
-                                GetMouseWheelMove() * 2.0f);                              // Move to target (zoom)
+                                0.0f);                              // Move to target (zoom) constant
                         
                         if ((oldCamPos.x != camera.position.x) || (oldCamPos.z != camera.position.z))
                         {
