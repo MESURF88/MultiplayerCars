@@ -76,6 +76,7 @@ void drawPortalRectangles(int xPos, int yPos);
 void drawChatSendBoxBlinkingUnderscore(const int& framesCounter, const char* tex);
 void drawDefaultSquaresColor();
 void drawTextLine(int idx, const TextContext& context);
+void drawFadeBackgroundLowerBox();
 void drawEscButton();
 void windowCloseWindow();
 bool windowIsKeyPressedUp();

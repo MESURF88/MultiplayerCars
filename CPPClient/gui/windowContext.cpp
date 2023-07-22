@@ -23,7 +23,7 @@ static constexpr int racePortalBoxHeight = 125;
 static constexpr int racePortalBoxWidth = 75;
 static constexpr int racePortalY = screenHeight - racePortalBoxHeight - 600;
 
-static const raylib::Color defaultMainTextColor = raylib::Color::LightGray();
+static const raylib::Color defaultMainTextColor = raylib::Color::Gray();
 // the one and only window
 raylib::Window window(screenWidth, screenHeight, "car sim game alpha v" + std::to_string(VERSION_NUM));
 
@@ -202,6 +202,12 @@ void drawTextLine(int idx, const TextContext& context)
 		defaultMainTextColor.DrawText(truncText + "...", 200, y + 2, 20);
 	}
 	defaultMainTextColor.DrawText(context.m_timestamp.c_str(), 1200, y + 2, 20);
+}
+
+void drawFadeBackgroundLowerBox()
+{
+	DrawRectangle(0, screenHeight - menuPanelHeight - chatPanelHeight, screenWidth, chatPanelHeight - 25, Fade(GetColor(0xAF1ACBF), 0.11f));
+	DrawRectangle(0, screenHeight - menuPanelHeight, screenWidth, menuPanelHeight, Fade(GetColor(0xA2B6C4), 0.06f));
 }
 
 void drawEscButton()

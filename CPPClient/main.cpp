@@ -535,7 +535,7 @@ int main() {
                                 currentCursorState = STATE_CURSOR_DISABLED;
                             }
                         }
-                        if (windowIsKeyOnlyPressed(KEY_LEFT_SHIFT))
+                        if (!mouseOnText && windowIsKeyOnlyPressed(KEY_LEFT_SHIFT))
                         {
                             g_in_state_transition = true;
                             currentGameState = STATE_LOBBY;
@@ -587,7 +587,7 @@ int main() {
                         {
                             playerInRacePortal = false;
                         }
-                        if (playerInRacePortal && windowIsKeyOnlyPressed(KEY_E))
+                        if (!mouseOnText && playerInRacePortal && windowIsKeyOnlyPressed(KEY_E))
                         {
                             g_in_state_transition = true;
                             currentGameState = STATE_RACING;
@@ -760,6 +760,7 @@ int main() {
                         DrawText(TextFormat("- Up: (%06.3f, %06.3f, %06.3f)", camera.up.x, camera.up.y, camera.up.z), 1360, 105, 12, BLACK);
 
                         // TODO: make function
+                        drawFadeBackgroundLowerBox();
                         drawDefaultSquaresColor();
                         if (g_handleBatch && (positionJsonQueue.getSize() > MAX_BATCHED_POSITIONS_THRESHOLD))
                         {
@@ -803,6 +804,7 @@ int main() {
                         drawCar(g_X, g_Y);
                         
                         // TODO: make function
+                        drawFadeBackgroundLowerBox();
                         drawDefaultSquaresColor();
                         if (g_handleBatch && (positionJsonQueue.getSize() > MAX_BATCHED_POSITIONS_THRESHOLD))
                         {
