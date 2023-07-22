@@ -46,6 +46,12 @@ typedef enum {
     STATE_GAME_OVER
 } GameState;
 
+// cursor states
+typedef enum {
+    STATE_CURSOR_ENABLED,
+    STATE_CURSOR_DISABLED,
+} CursorState;
+
 // Globals
 static constexpr float SCALEFACTOR = 1000.0f;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
@@ -57,7 +63,9 @@ ThreadSafeQueue<std::string> guiJsonQueue;
 ThreadSafeQueue<std::string> positionJsonQueue;
 std::atomic<bool> g_gameRunning = false;
 std::atomic<bool> g_handleBatch = false;
-GameState currentGameState = STATE_RACING; //TODO:
+bool g_in_state_transition = false;
+GameState currentGameState = STATE_LOBBY;
+CursorState currentCursorState = STATE_CURSOR_ENABLED;
 
 // Handler classes
 //----------------------------------------------------------------------------------
@@ -227,6 +235,8 @@ int main() {
             char textmessage[MAX_INPUT_CHARS + 1] = "\0";      // NOTE: One extra space required for null terminator char '\0'
             int framesCounter = 0;
             int letterCount = 0;
+            int letterIdx = 0;
+            bool playerInRacePortal = false;
             std::string gui_timestamp;
             std::map<std::string, CarContext> gui_externalplayers;
             std::deque<TextContext> gui_textmessagesdisplay;
@@ -290,17 +300,18 @@ int main() {
             Color* mapPixels = LoadImageColors(imMap);
             UnloadImage(imMap);             // Unload image from RAM
 
+            // Create a RenderTexture2D to be used for render to texture
+            RenderTexture2D target3DArea = LoadRenderTexture(windowScreenWidth(), windowYBoundary());
+
 #if defined(WIN32)  
-            //TODO: Model carModel = LoadModel(std::string(exePath + "resources\\NormalCar1.obj").c_str());
+            Model carModel = LoadModel(std::string(exePath + "resources\\raceFuture.obj").c_str());
 #else
-            //TODO: Model carModel = LoadModel(std::string(exePath + "resources/NormalCar1.obj").c_str());
+            //TODO: Model carModel = LoadModel(std::string(exePath + "resources/raceFuture.obj").c_str());
 #endif
 
             Vector3 mapPosition = { -16.0f, 0.0f, -8.0f };  // Set model position
             //----------------------------------------------------------------------------------
             // End Initialize model/3d variables here
-
-            DisableCursor();                // Limit cursor to relative movement inside the window TODO:
 
             // Main game loop
             g_gameRunning = true;
@@ -313,7 +324,6 @@ int main() {
                 // Update
                 //----------------------------------------------------------------------------------
                 // Update your variables here
-
                 if (!positionJsonQueue.isEmpty()) // position update queue, get fifo
                 {
                     // online json parser
@@ -459,7 +469,6 @@ int main() {
                     case STATE_RACING:
                         oldCamPos = camera.position;    // Store old camera position
 
-                        //UpdateCamera(&camera, CAMERA_FIRST_PERSON);
                         UpdateCameraPro(&camera,
                             {
                             (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) * 0.1f -      // Move forward-backward
@@ -513,9 +522,30 @@ int main() {
                                 }
                             }
                         }
+                        if (windowIsKeyOnlyPressed(KEY_C))
+                        {
+                            if (STATE_CURSOR_DISABLED == currentCursorState)
+                            {
+                                EnableCursor();
+                                currentCursorState = STATE_CURSOR_ENABLED;
+                            }
+                            else
+                            {
+                                DisableCursor();
+                                currentCursorState = STATE_CURSOR_DISABLED;
+                            }
+                        }
+                        if (windowIsKeyOnlyPressed(KEY_LEFT_SHIFT))
+                        {
+                            g_in_state_transition = true;
+                            currentGameState = STATE_LOBBY;
+                            currentCursorState = STATE_CURSOR_ENABLED;
+                            g_X = 0;
+                            g_Y = 125;
+                        }
                         break;
                     case STATE_LOBBY:
-                        if (windowIsKeyPressedUp())
+                        if (windowIsKeyPressedUp() || windowIsKeyPressed(KEY_W))
                         {
                             if (g_Y > 1)
                             {
@@ -523,7 +553,7 @@ int main() {
                                 move = true;
                             }
                         }
-                        if (windowIsKeyPressedDown())
+                        if (windowIsKeyPressedDown() || windowIsKeyPressed(KEY_S))
                         {
                             if (g_Y < (windowYBoundary() - getCarHeight() - 1))
                             {
@@ -531,7 +561,7 @@ int main() {
                                 move = true;
                             }
                         }
-                        if (windowIsKeyPressedLeft())
+                        if (windowIsKeyPressedLeft() || windowIsKeyPressed(KEY_A))
                         {
                             if (g_X > 1)
                             {
@@ -539,7 +569,7 @@ int main() {
                                 move = true;
                             }
                         }
-                        if (windowIsKeyPressedRight())
+                        if (windowIsKeyPressedRight() || windowIsKeyPressed(KEY_D))
                         {
                             if (g_X < (windowScreenWidth() - getCarWidth() - 1))
                             {
@@ -547,101 +577,119 @@ int main() {
                                 move = true;
                             }
                         }
-                        if (windowIsMouseButtonPressed())
+                        
+                        // portal handling
+                        if (windowIsPlayerCollidesRacePortal(g_X, g_Y))
                         {
-                            int colorSelection = windowIsMouseInColorSelection();
-                            switch (colorSelection)
-                            {
-                            case colorSelectionType::NOCOLOR:
-                                break;
-                            case colorSelectionType::BLUECOLOR:
-                            case colorSelectionType::GREENCOLOR:
-                            case colorSelectionType::REDCOLOR:
-                            case colorSelectionType::MAGENTACOLOR:
-                            case colorSelectionType::ORANGECOLOR:
-                            case colorSelectionType::YELLOWCOLOR:
-                            case colorSelectionType::SKYBLUECOLOR:
-                            case colorSelectionType::LIGHTGREYCOLOR:
-                                if (windowGetColorSelectionMap().count(colorSelection))
-                                {
-                                    setCarColor(windowGetColorSelectionMap().at(colorSelection).hexValue);
-                                    session->sendColorUpdate(windowGetColorSelectionMap().at(colorSelection).hexString);
-                                }
-                                break;
-                            default:
-                                break;
-                            }
-                            if (windowIsMouseCollidesChatBox())
-                            {
-                                mouseOnText = true;
-                            }
-                            else
-                            {
-                                mouseOnText = false;
-                            }
-                            if (windowIsMouseCollidesChatSendButton())
-                            {
-                                text = true;
-                                // append locally first the broadcast
-                                gui_textmessagesdisplay.pop_back();
-                                gui_textmessagesdisplay.push_front(TextContext(false, getCarColorString(), std::string(textmessage), gui_timestamp));
-                            }
-                            if (windowIsMouseInEscape())
-                            {
-                                g_gameRunning = false;
-                            }
-                        }
-                        // text handling
-                        if (mouseOnText)
-                        {
-                            // Set the window's cursor to the I-Beam
-                            windowSetMouseCursorIBeam();
-
-                            // Get char pressed (unicode character) on the queue
-                            int key = windowGetCharPressed();
-
-                            // Check if more characters have been pressed on the same frame
-                            while (key > 0)
-                            {
-                                // NOTE: Only allow keys in range [32..125]
-                                if ((key >= 32) && (key <= 125) && (letterCount < MAX_INPUT_CHARS))
-                                {
-                                    textmessage[letterCount] = (char)key;
-                                    textmessage[letterCount + 1] = '\0'; // Add null terminator at the end of the string.
-                                    letterCount++;
-                                }
-
-                                key = windowGetCharPressed();  // Check next character in the queue
-                            }
-
-                            if (windowIsKeyPressedBackSpace())
-                            {
-                                letterCount--;
-                                if (letterCount < 0) letterCount = 0;
-                                textmessage[letterCount] = '\0';
-                            }
-                            if (windowIsKeyReleasedEnter())
-                            {
-                                text = true;
-                                // append locally first the broadcast
-                                gui_textmessagesdisplay.pop_back();
-                                gui_textmessagesdisplay.push_front(TextContext(false, getCarColorString(), std::string(textmessage), gui_timestamp));
-                            }
+                            playerInRacePortal = true;
                         }
                         else
                         {
-                            windowSetMouseCursorDefault();
+                            playerInRacePortal = false;
                         }
-                        if (mouseOnText) framesCounter++;
-                        else framesCounter = 0;
-                        if (text)
+                        if (playerInRacePortal && windowIsKeyOnlyPressed(KEY_E))
                         {
-                            session->sendTextMessage("", "", std::string(textmessage)); // global is true, default current color
-                            text = false;
+                            g_in_state_transition = true;
+                            currentGameState = STATE_RACING;
+                            currentCursorState = STATE_CURSOR_DISABLED;
                         }
                         break;
                 }
+                if ((currentGameState == STATE_LOBBY) || ((currentCursorState == STATE_CURSOR_ENABLED) && (currentGameState == STATE_RACING)))
+                {
+                    if (windowIsMouseButtonPressed())
+                    {
+                        int colorSelection = windowIsMouseInColorSelection();
+                        switch (colorSelection)
+                        {
+                        case colorSelectionType::NOCOLOR:
+                            break;
+                        case colorSelectionType::BLUECOLOR:
+                        case colorSelectionType::GREENCOLOR:
+                        case colorSelectionType::REDCOLOR:
+                        case colorSelectionType::MAGENTACOLOR:
+                        case colorSelectionType::ORANGECOLOR:
+                        case colorSelectionType::YELLOWCOLOR:
+                        case colorSelectionType::SKYBLUECOLOR:
+                        case colorSelectionType::LIGHTGREYCOLOR:
+                            if (windowGetColorSelectionMap().count(colorSelection))
+                            {
+                                setCarColor(windowGetColorSelectionMap().at(colorSelection).hexValue);
+                                session->sendColorUpdate(windowGetColorSelectionMap().at(colorSelection).hexString);
+                            }
+                            break;
+                        default:
+                            break;
+                        }
+                        if (windowIsMouseCollidesChatBox())
+                        {
+                            mouseOnText = true;
+                        }
+                        else
+                        {
+                            mouseOnText = false;
+                        }
+                        if (windowIsMouseCollidesChatSendButton())
+                        {
+                            text = true;
+                            // append locally first the broadcast
+                            gui_textmessagesdisplay.pop_back();
+                            gui_textmessagesdisplay.push_front(TextContext(false, getCarColorString(), std::string(textmessage), gui_timestamp));
+                        }
+                        if (windowIsMouseInEscape())
+                        {
+                            g_gameRunning = false;
+                        }
+                    }
+                    // text handling
+                    if (mouseOnText)
+                    {
+                        // Set the window's cursor to the I-Beam
+                        windowSetMouseCursorIBeam();
 
+                        // Get char pressed (unicode character) on the queue
+                        int key = windowGetCharPressed();
+
+                        // Check if more characters have been pressed on the same frame
+                        while (key > 0)
+                        {
+                            // NOTE: Only allow keys in range [32..125]
+                            if ((key >= 32) && (key <= 125) && (letterCount < MAX_INPUT_CHARS))
+                            {
+                                textmessage[letterCount] = (char)key;
+                                textmessage[letterCount + 1] = '\0'; // Add null terminator at the end of the string.
+                                letterCount++;
+                            }
+
+                            key = windowGetCharPressed();  // Check next character in the queue
+                        }
+
+                        if (windowIsKeyPressedBackSpace())
+                        {
+                            letterCount--;
+                            if (letterCount < 0) letterCount = 0;
+                            textmessage[letterCount] = '\0';
+                        }
+                        if (windowIsKeyReleasedEnter())
+                        {
+                            text = true;
+                            // append locally first the broadcast
+                            gui_textmessagesdisplay.pop_back();
+                            gui_textmessagesdisplay.push_front(TextContext(false, getCarColorString(), std::string(textmessage), gui_timestamp));
+                        }
+                    }
+                    else
+                    {
+                        windowSetMouseCursorDefault();
+                    }
+                    if (mouseOnText) framesCounter++;
+                    else framesCounter = 0;
+                    if (text)
+                    {
+                        session->sendTextMessage("", "", std::string(textmessage)); // global is true, default current color
+                        text = false;
+                    }
+                }
                 if (move)
                 {
 #ifdef TIMING_BENCHMARK
@@ -657,36 +705,62 @@ int main() {
                 //----------------------------------------------------------------------------------
                 // End Update and input handling
 
+                // State transition
+                //----------------------------------------------------------------------------------
+                if (g_in_state_transition)
+                {
+                    // one-time use variables
+                    if (STATE_CURSOR_ENABLED == currentCursorState)
+                    {
+                        EnableCursor();
+                    }
+                    else
+                    {
+                        DisableCursor(); // Limit cursor to relative movement inside the window
+                    }
+                    g_in_state_transition = false;
+                }
+                //----------------------------------------------------------------------------------
+                // End State transition
+
                 // Draw
                 //----------------------------------------------------------------------------------
                 switch (currentGameState)
                 {
                     case STATE_RACING:
-                        BeginDrawing();
-
+                        BeginTextureMode(target3DArea);       // Enable drawing to texture
                         ClearBackground(RAYWHITE);
-
                         BeginMode3D(camera);
                         DrawModel(model, mapPosition, 1.0f, WHITE);                     // Draw map
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
                             DrawCube({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.5f, 1.0f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
                         }
+                        DrawModel(carModel, { 0.0f, 0.0f, 0.0f }, 0.5f, GRAY);
                         EndMode3D();
+                        EndTextureMode();
 
-                        DrawFPS(10, 10);
-
-                        EndDrawing();
-                        break;
-                    case STATE_LOBBY:
                         BeginDrawing();
-                        windowDrawBackground();
+
+                        ClearBackground(RAYWHITE);
+                        DrawFPS(10, 10);
+                        DrawTextureRec(target3DArea.texture, { 0, 0, (float)target3DArea.texture.width, (float)-target3DArea.texture.height }, { 0, 0 }, WHITE);
+
+                        DrawRectangle(1300, 5, 245, 115, Fade(SKYBLUE, 0.5f));
+                        DrawRectangleLines(1300, 5, 245, 115, BLUE);
+
+                        // draw camera player status
+                        DrawText("Camera status:", 1310, 15, 12, BLACK);
+                        DrawText("Use C Key to toggle cursor", 1310, 30, 12, BLACK);
+                        DrawText("Use Left Shift Key to return to lobby", 1310, 45, 12, BLACK);
+                        DrawText(TextFormat("- Projection: %s", (camera.projection == CAMERA_PERSPECTIVE) ? "PERSPECTIVE" :
+                            (camera.projection == CAMERA_ORTHOGRAPHIC) ? "ORTHOGRAPHIC" : "CUSTOM"), 1310, 60, 12, BLACK);
+                        DrawText(TextFormat("- Position: (%06.3f, %06.3f, %06.3f)", camera.position.x, camera.position.y, camera.position.z), 1310, 75, 12, BLACK);
+                        DrawText(TextFormat("- Target: (%06.3f, %06.3f, %06.3f)", camera.target.x, camera.target.y, camera.target.z), 1310, 90, 12, BLACK);
+                        DrawText(TextFormat("- Up: (%06.3f, %06.3f, %06.3f)", camera.up.x, camera.up.y, camera.up.z), 1310, 105, 12, BLACK);
+
+                        // TODO: make function
                         drawDefaultSquaresColor();
-                        for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
-                        {
-                            drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
-                        }
-                        drawCar(g_X, g_Y);
                         if (g_handleBatch && (positionJsonQueue.getSize() > MAX_BATCHED_POSITIONS_THRESHOLD))
                         {
                             // batching losing a few is not an issue since positions are pixel updates
@@ -710,11 +784,56 @@ int main() {
                                 drawChatSendBoxBlinkingUnderscore(framesCounter, textmessage);
                             }
                         }
-                        int idx = 0;
+                        letterIdx = 0;
                         for (const TextContext& context : gui_textmessagesdisplay)
                         {
-                            drawTextLine(idx, context);
-                            idx++;
+                            drawTextLine(letterIdx, context);
+                            letterIdx++;
+                        }
+                        drawEscButton();
+                        EndDrawing();
+                        break;
+                    case STATE_LOBBY:
+                        BeginDrawing();
+                        windowDrawBackground();
+                        for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
+                        {
+                            drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
+                        }
+                        drawCar(g_X, g_Y);
+                        
+                        // TODO: make function
+                        drawDefaultSquaresColor();
+                        if (g_handleBatch && (positionJsonQueue.getSize() > MAX_BATCHED_POSITIONS_THRESHOLD))
+                        {
+                            // batching losing a few is not an issue since positions are pixel updates
+                            for (int i = 0; i < positionJsonQueue.getSize() - 1; i++)
+                            {
+                                positionJsonQueue.pop();
+                            }
+                            g_handleBatch = false;
+                            // skip drawing text if behind on new positions to update
+                            continue;
+                        }
+                        drawTextTestBox(gui_timestamp);
+                        drawChatBoxContainer();
+                        drawChatSendBox(mouseOnText, textmessage);
+                        drawSendTextButton();
+                        drawPortalRectangles(g_X, g_Y);
+                        drawPortalRaceInfoPane(playerInRacePortal);
+                        if (mouseOnText)
+                        {
+                            if (letterCount < MAX_INPUT_CHARS)
+                            {
+                                // Draw blinking underscore char
+                                drawChatSendBoxBlinkingUnderscore(framesCounter, textmessage);
+                            }
+                        }
+                        letterIdx = 0;
+                        for (const TextContext& context : gui_textmessagesdisplay)
+                        {
+                            drawTextLine(letterIdx, context);
+                            letterIdx++;
                         }
                         drawEscButton();
                         EndDrawing();
@@ -734,7 +853,7 @@ int main() {
             UnloadTexture(cubicmap);        // Unload cubicmap texture
             UnloadTexture(texture);         // Unload map texture
             UnloadModel(model);             // Unload map model
-            //TODO: UnloadModel(carModel);          // Unload car model
+            UnloadModel(carModel);          // Unload car model
 
             session->closeConnection();
             g_gameRunning = false;

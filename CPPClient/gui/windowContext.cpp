@@ -1,4 +1,5 @@
 #include "windowContext.hpp"
+#include "carClass.hpp"
 #include "version.hpp"
 
 static constexpr int screenWidth = 1600;
@@ -18,6 +19,9 @@ static constexpr int escBoxY = screenHeight - escBoxHeight - 5;
 static constexpr int chatPanelHeight = 160;
 static constexpr int chatSendBoxHeight = 25;
 static constexpr int chatSendBoxWidth = 1500;
+static constexpr int racePortalBoxHeight = 125;
+static constexpr int racePortalBoxWidth = 75;
+static constexpr int racePortalY = screenHeight - racePortalBoxHeight - 600;
 
 static const raylib::Color defaultMainTextColor = raylib::Color::LightGray();
 // the one and only window
@@ -25,6 +29,7 @@ raylib::Window window(screenWidth, screenHeight, "car sim game alpha v" + std::t
 
 static const Rectangle chatSendBoxRect = { 0, screenHeight - menuPanelHeight - chatSendBoxHeight, chatSendBoxWidth, chatSendBoxHeight };
 static const Rectangle chatSendButtonRect = { chatSendBoxWidth-1, screenHeight - menuPanelHeight - chatSendBoxHeight, 100, chatSendBoxHeight };
+static const Rectangle racePortalRect = { 1, racePortalY, racePortalBoxWidth, racePortalBoxHeight };
 
 static const std::map<int, ColorHexMap> colorEnumToHexValue = {
 	{colorSelectionType::BLUECOLOR, ColorHexMap(7991807, "0079F1")},
@@ -134,10 +139,25 @@ void drawChatSendBox(bool mouseOnText, const char *text)
 	DrawText(text, (int)chatSendBoxRect.x + 5, (int)chatSendBoxRect.y + 5, 20, MAROON);
 }
 
+void drawPortalRaceInfoPane(bool playerInRacePortal)
+{
+	if (playerInRacePortal)
+	{
+		DrawRectangleLines(120, racePortalY + racePortalBoxHeight + 15, 235, 50, BLACK);
+		DrawText("E", 180, racePortalY + racePortalBoxHeight + 18, 20, BLACK);
+		DrawText("- Enter Race Portal", 125, racePortalY + racePortalBoxHeight + 35, 20, BLACK);
+	}
+}
+
 void drawSendTextButton()
 {
 	DrawRectangleLines((int)chatSendButtonRect.x, (int)chatSendButtonRect.y, (int)chatSendButtonRect.width, (int)chatSendButtonRect.height, BLACK);
 	defaultMainTextColor.DrawText("SEND", chatSendButtonRect.x + 25, chatSendButtonRect.y + 5, 20);
+}
+
+void drawPortalRectangles(int xPos, int yPos)
+{
+	DrawRectangleLines((int)racePortalRect.x, (int)racePortalRect.y, (int)racePortalRect.width, (int)racePortalRect.height, ORANGE);
 }
 
 void drawChatSendBoxBlinkingUnderscore(const int& framesCounter, const char * text)
@@ -214,6 +234,10 @@ bool windowIsKeyPressedRight()
 bool windowIsKeyPressedBackSpace()
 {
 	return windowIsKeyPressed(KEY_BACKSPACE);
+}
+bool windowIsKeyOnlyPressed(int keyID)
+{
+	return windowIsKeyPressed(keyID);
 }
 bool windowIsKeyReleasedEnter()
 {
@@ -312,4 +336,9 @@ void windowSetMouseCursorIBeam()
 void windowSetMouseCursorDefault()
 {
 	SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+}
+
+bool windowIsPlayerCollidesRacePortal(int xPos, int yPos)
+{
+	return CheckCollisionRecs({ static_cast<float>(xPos), static_cast<float>(yPos), static_cast<float>(getCarWidth()), static_cast<float>(getCarHeight()) }, racePortalRect);
 }

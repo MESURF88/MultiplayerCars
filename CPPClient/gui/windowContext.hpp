@@ -70,7 +70,9 @@ void windowDrawBackground();
 void drawTextTestBox(std::string testStr);
 void drawChatBoxContainer();
 void drawChatSendBox(bool mouseOnText, const char* text);
+void drawPortalRaceInfoPane(bool playerInRacePortal);
 void drawSendTextButton();
+void drawPortalRectangles(int xPos, int yPos);
 void drawChatSendBoxBlinkingUnderscore(const int& framesCounter, const char* tex);
 void drawDefaultSquaresColor();
 void drawTextLine(int idx, const TextContext& context);
@@ -81,6 +83,7 @@ bool windowIsKeyPressedDown();
 bool windowIsKeyPressedLeft();
 bool windowIsKeyPressedRight();
 bool windowIsKeyPressedBackSpace();
+bool windowIsKeyOnlyPressed(int keyID);
 bool windowIsKeyReleasedEnter();
 bool windowIsKeyPressed(int key);
 bool windowIsKeyReleased(int key);
@@ -93,6 +96,7 @@ bool windowIsMouseCollidesChatBox();
 bool windowIsMouseCollidesChatSendButton();
 void windowSetMouseCursorIBeam();
 void windowSetMouseCursorDefault();
+bool windowIsPlayerCollidesRacePortal(int xPos, int yPos);
 
 
 #endif // _WINDOWCONTEXT_
