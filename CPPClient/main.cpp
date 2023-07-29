@@ -54,6 +54,9 @@ typedef enum {
 
 // Globals
 static constexpr float SCALEFACTOR = 1000.0f;
+static constexpr int CAMERA_MOUSE_MOVE_SENSITIVITY = 4.5f;
+static constexpr float INIT_CAR_SPEED = 2.0f;
+static constexpr float INIT_CAR_TURN_SPEED = 50.0f;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
@@ -266,6 +269,15 @@ int main() {
             Vector3 position = { 0.0f, 0.0f, 0.0f };            // Set model position
             float playerRadius = 0.1f;  // Collision radius (player is modelled as a cilinder for collision)
             Vector2 playerPos;
+            Vector3 rotation = { 0 };
+            Vector2 mousePositionDelta = { 0 };
+            Vector2 movementDirection = { 0 };
+            Vector3 movement = { 0 };
+            int direction = 0;
+            Vector3 carSize = { 0 };
+            float cameraAngle = -90;
+            float carAngle = -90;
+            float movementAngle = 0;
 
             const char* pBuf = GetApplicationDirectory();
             std::string exePath(pBuf);
@@ -467,21 +479,38 @@ int main() {
                 switch (currentGameState)
                 {
                     case STATE_RACING:
+                        mousePositionDelta = GetMouseDelta();
+                        rotation.x = mousePositionDelta.x * CAMERA_MOUSE_MOVE_SENSITIVITY * GetFrameTime();
+                        rotation.y = mousePositionDelta.y * CAMERA_MOUSE_MOVE_SENSITIVITY * GetFrameTime();
+
+                        cameraAngle += rotation.x;
+                        if (cameraAngle < 0.0f) cameraAngle += 360.0f;
+                        if (cameraAngle > 360.0f) cameraAngle -= 360.0f;
+
+                        movementAngle = carAngle - cameraAngle;
+                        movementDirection = {
+                            cos(movementAngle * DEG2RAD),
+                            sin(movementAngle * DEG2RAD)
+                        };
+
+                        movement = { 0 };
+                        direction = IsKeyDown(KEY_W) - IsKeyDown(KEY_S);
+
+                        if (direction) {
+                            float directionSpeed = direction * INIT_CAR_SPEED * GetFrameTime();
+                            movement.x = movementDirection.x * directionSpeed;
+                            movement.y = movementDirection.y * directionSpeed;
+                        }
+
+                        carAngle += (IsKeyDown(KEY_D) - IsKeyDown(KEY_A)) * INIT_CAR_TURN_SPEED * GetFrameTime() * ((direction > 0) ? 1: -1);
+                        if (carAngle < 0.0f) carAngle += 360.0f;
+                        if (carAngle > 360.0f) carAngle -= 360.0f;
+
                         oldCamPos = camera.position;    // Store old camera position
 
                         UpdateCameraPro(&camera,
-                            {
-                            (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) * 0.1f -      // Move forward-backward
-                                (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) * 0.1f,
-                                (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) * 0.1f -   // Move right-left
-                                (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) * 0.1f,
-                                0.0f                                                // Move up-down
-                        },
-                            {
-                                GetMouseDelta().x * 0.05f,                            // Rotation: yaw
-                                GetMouseDelta().y * 0.05f,                            // Rotation: pitch
-                                0.0f                                                // Rotation: roll
-                        },
+                            movement,
+                            rotation,
                                 0.0f);                              // Move to target (zoom) constant
                         
                         if ((oldCamPos.x != camera.position.x) || (oldCamPos.z != camera.position.z))
@@ -737,6 +766,14 @@ int main() {
                             DrawCube({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.5f, 1.0f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
                         }
                         DrawModel(carModel, { 0.0f, 0.0f, 0.0f }, 0.5f, GRAY);
+
+                        carSize = {
+                            camera.position.x + cos(carAngle * DEG2RAD),
+                            static_cast<float>(camera.position.y - 0.5),
+                            camera.position.z + sin(carAngle * DEG2RAD),
+                        };
+                        DrawCapsule({playerPos.x, 0.1f, playerPos.y}, carSize, 0.1, 5, 5, BLACK);
+
                         EndMode3D();
                         EndTextureMode();
 
