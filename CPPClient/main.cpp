@@ -35,6 +35,7 @@ std::chrono::time_point<std::chrono::high_resolution_clock> stop0;
 std::chrono::time_point<std::chrono::high_resolution_clock> stop1;
 std::chrono::time_point<std::chrono::high_resolution_clock> stop2;
 #endif
+#include <rcamera.h>
 
 // game states
 typedef enum {
@@ -52,11 +53,23 @@ typedef enum {
     STATE_CURSOR_DISABLED,
 } CursorState;
 
+// accel states
+typedef enum {
+    STATE_DRIVE_IDLE,
+    STATE_DRIVE_FORWARD,
+    STATE_DRIVE_BACKWARD,
+} DriveState;
+
 // Globals
 static constexpr float SCALEFACTOR = 1000.0f;
+static constexpr float CAR_ANGLE_ADJUSTMENT = 90.0f;
 static constexpr int CAMERA_MOUSE_MOVE_SENSITIVITY = 4.5f;
 static constexpr float INIT_CAR_SPEED = 2.0f;
-static constexpr float INIT_CAR_TURN_SPEED = 50.0f;
+static constexpr float INIT_CAR_TURN_SPEED = 80.0f;
+static constexpr float THRESHOLD_CAR_SPEED1 = 4.0f;
+static constexpr float THRESHOLD_CAR_SPEED2 = 7.0f;
+static constexpr float MAX_CAR_SPEED = 8.0f;
+static constexpr float MIN_CAR_TURN_SPEED = 50.0f;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
@@ -69,6 +82,8 @@ std::atomic<bool> g_handleBatch = false;
 bool g_in_state_transition = false;
 GameState currentGameState = STATE_LOBBY;
 CursorState currentCursorState = STATE_CURSOR_ENABLED;
+DriveState currentDriveState = STATE_DRIVE_IDLE;
+DriveState prevDriveState = STATE_DRIVE_IDLE;
 
 // Handler classes
 //----------------------------------------------------------------------------------
@@ -154,9 +169,11 @@ public:
     CartesianCoordinates() {
         m_X = 0;
         m_Y = 0;
+        m_Angle = 0.0;
     }
     int m_X;
     int m_Y;
+    double m_Angle;
 };
 
 class CarContext
@@ -165,10 +182,11 @@ public:
     CarContext() {
         m_color = "ffffff";
     }
-    CarContext(int X, int Y, std::string color)
+    CarContext(int X, int Y, double Angle, std::string color)
     {
         m_coords.m_X = X;
         m_coords.m_Y = Y;
+        m_coords.m_Angle = Angle;
         m_color = color;
     }
     CartesianCoordinates m_coords;
@@ -250,6 +268,7 @@ int main() {
             }
             int g_X = 0;
             int g_Y = 0;
+            float g_Angle = 0.0f;
             int g_SafetyX = 0;
             int g_SafetyY = 0;
             //----------------------------------------------------------------------------------
@@ -268,7 +287,7 @@ int main() {
             Vector3 oldCamPos;
             Vector3 position = { 0.0f, 0.0f, 0.0f };            // Set model position
             float playerRadius = 0.1f;  // Collision radius (player is modelled as a cilinder for collision)
-            Vector2 playerPos;
+            Vector2 playerPos = { 0 };
             Vector3 rotation = { 0 };
             Vector2 mousePositionDelta = { 0 };
             Vector2 movementDirection = { 0 };
@@ -278,6 +297,8 @@ int main() {
             float cameraAngle = -90;
             float carAngle = -90;
             float movementAngle = 0;
+            float carDriveSpeed = INIT_CAR_SPEED;
+            float carTurnSpeed = INIT_CAR_TURN_SPEED;
 
             const char* pBuf = GetApplicationDirectory();
             std::string exePath(pBuf);
@@ -353,7 +374,7 @@ int main() {
                                 if (0 == gui_externalplayers.count(uuidOfPlayerCar))
                                 {
                                     // new player
-                                    gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson["X"].get_int64(), parsedJson["Y"].get_int64(), std::string{ parsedJson["Color"].get_string().value() }));
+                                    gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson["X"].get_int64(), parsedJson["Y"].get_int64(), parsedJson["Angle"].get_double(), std::string{ parsedJson["Color"].get_string().value() }));
                                     // need to send new player our own position, because client owns position
                                     move = true;
                                 }
@@ -361,6 +382,7 @@ int main() {
                                 {
                                     gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_X = parsedJson["X"].get_int64();
                                     gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Y = parsedJson["Y"].get_int64();
+                                    gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Angle = parsedJson["Angle"].get_double();
                                     gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
                                 }
                             }
@@ -371,7 +393,7 @@ int main() {
                                 if (0 == gui_externalplayers.count(uuidOfPlayerCar))
                                 {
                                     // new player
-                                    gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson["X"].get_int64(), parsedJson["Y"].get_int64(), std::string{ parsedJson["Color"].get_string().value() }));
+                                    gui_externalplayers.emplace(uuidOfPlayerCar, CarContext(parsedJson["X"].get_int64(), parsedJson["Y"].get_int64(), parsedJson["Angle"].get_double(), std::string{ parsedJson["Color"].get_string().value() }));
                                     // need to send new player our own position, because client owns position
                                     move = true;
                                 }
@@ -379,6 +401,7 @@ int main() {
                                 {
                                     gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_X = parsedJson["X"].get_int64();
                                     gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Y = parsedJson["Y"].get_int64();
+                                    gui_externalplayers.at(uuidOfPlayerCar).m_coords.m_Angle = parsedJson["Angle"].get_double();
                                     gui_externalplayers.at(uuidOfPlayerCar).m_color = std::string{ parsedJson["Color"].get_string().value() };
                                 }
 #ifdef TIMING_BENCHMARK
@@ -479,6 +502,47 @@ int main() {
                 switch (currentGameState)
                 {
                     case STATE_RACING:
+                        if (STATE_DRIVE_IDLE == currentDriveState)
+                        {
+                            if (INIT_CAR_SPEED < carDriveSpeed)
+                            {
+                                carDriveSpeed -= GetFrameTime() * 8.0f;
+                            }
+                            if (INIT_CAR_TURN_SPEED > carTurnSpeed)
+                            {
+                                carTurnSpeed += GetFrameTime() * 8.0f;
+                            }
+                        }
+                        else
+                        {
+                            if (MAX_CAR_SPEED > carDriveSpeed)
+                            {
+                                if (THRESHOLD_CAR_SPEED1 < carDriveSpeed)
+                                {
+                                    carDriveSpeed += GetFrameTime() * 6.0f;
+                                }
+                                else if (THRESHOLD_CAR_SPEED2 < carDriveSpeed)
+                                {
+                                    carDriveSpeed += GetFrameTime() * 5.0f;
+                                }
+                                else
+                                {
+                                    carDriveSpeed += GetFrameTime() * 4.0f;
+                                }
+                            }
+                            if (MIN_CAR_TURN_SPEED < carTurnSpeed)
+                            {
+                                if (THRESHOLD_CAR_SPEED2 < carDriveSpeed)
+                                {
+                                    carTurnSpeed -= GetFrameTime() * 1.0f;
+                                }
+                                else
+                                {
+                                    carTurnSpeed -= GetFrameTime() * 4.0f;
+                                }
+                            }
+                        }
+
                         mousePositionDelta = GetMouseDelta();
                         rotation.x = mousePositionDelta.x * CAMERA_MOUSE_MOVE_SENSITIVITY * GetFrameTime();
                         rotation.y = mousePositionDelta.y * CAMERA_MOUSE_MOVE_SENSITIVITY * GetFrameTime();
@@ -497,14 +561,50 @@ int main() {
                         direction = IsKeyDown(KEY_W) - IsKeyDown(KEY_S);
 
                         if (direction) {
-                            float directionSpeed = direction * INIT_CAR_SPEED * GetFrameTime();
+                            if (direction > 0)
+                            {
+                                currentDriveState = STATE_DRIVE_FORWARD;
+                            }
+                            else
+                            {
+                                currentDriveState = STATE_DRIVE_BACKWARD;
+                            }
+                            prevDriveState = currentDriveState;
+                            float directionSpeed = direction * carDriveSpeed * GetFrameTime();
                             movement.x = movementDirection.x * directionSpeed;
                             movement.y = movementDirection.y * directionSpeed;
                         }
+                        else
+                        {
+                            currentDriveState = STATE_DRIVE_IDLE;
+                            if (INIT_CAR_SPEED < carDriveSpeed)
+                            {
+                                if (STATE_DRIVE_FORWARD == prevDriveState)
+                                {
+                                    direction = 1;
+                                }
+                                else
+                                {
+                                    direction = -1;
+                                }
+                                float directionSpeed = direction * carDriveSpeed * GetFrameTime();
+                                movement.x = movementDirection.x * directionSpeed;
+                                movement.y = movementDirection.y * directionSpeed;
+                            }
+                            else
+                            {
+                                if (carDriveSpeed != INIT_CAR_SPEED) carDriveSpeed = INIT_CAR_SPEED;
+                                if (carTurnSpeed != INIT_CAR_TURN_SPEED) carTurnSpeed = INIT_CAR_TURN_SPEED;
+                            }
+                        }
 
-                        carAngle += (IsKeyDown(KEY_D) - IsKeyDown(KEY_A)) * INIT_CAR_TURN_SPEED * GetFrameTime() * ((direction > 0) ? 1: -1);
+
+
+                        carAngle += (IsKeyDown(KEY_D) - IsKeyDown(KEY_A)) * carTurnSpeed * GetFrameTime() * ((direction >= 0) ? 1: -1);
                         if (carAngle < 0.0f) carAngle += 360.0f;
                         if (carAngle > 360.0f) carAngle -= 360.0f;
+
+                        g_Angle = -carAngle + CAR_ANGLE_ADJUSTMENT;
 
                         oldCamPos = camera.position;    // Store old camera position
 
@@ -548,6 +648,8 @@ int main() {
                                 {
                                     // Collision detected, reset camera position
                                     camera.position = oldCamPos;
+                                    if (carDriveSpeed != INIT_CAR_SPEED) carDriveSpeed = INIT_CAR_SPEED;
+                                    if (carTurnSpeed != INIT_CAR_TURN_SPEED) carTurnSpeed = INIT_CAR_TURN_SPEED;
                                 }
                             }
                         }
@@ -724,7 +826,7 @@ int main() {
 #ifdef TIMING_BENCHMARK
                     start = std::chrono::high_resolution_clock::now();
 #endif
-                    session->sendPosition(g_X, g_Y);
+                    session->sendPosition(g_X, g_Y, g_Angle);
 #ifdef TIMING_BENCHMARK
                     stop0 = std::chrono::high_resolution_clock::now();
 #endif
@@ -763,16 +865,10 @@ int main() {
                         DrawModel(model, mapPosition, 1.0f, WHITE);                     // Draw map
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
-                            DrawCube({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.5f, 1.0f, 0.5f, GetColor(colorHexToString(coords->second.m_color)));
+                            DrawCylinder({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.15f, 0.15f, 0.3f, 5, GetColor(colorHexToString(coords->second.m_color)));
+                            DrawModelEx(carModel, { static_cast<float>(coords->second.m_coords.m_X) / SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y) / SCALEFACTOR }, { 0.0f, 1.0f, 0.0f }, coords->second.m_coords.m_Angle, { 0.5f, 0.5f, 0.5f }, GRAY);
                         }
-                        DrawModel(carModel, { 0.0f, 0.0f, 0.0f }, 0.5f, GRAY);
-
-                        carSize = {
-                            camera.position.x + cos(carAngle * DEG2RAD),
-                            static_cast<float>(camera.position.y - 0.5),
-                            camera.position.z + sin(carAngle * DEG2RAD),
-                        };
-                        DrawCapsule({playerPos.x, 0.1f, playerPos.y}, carSize, 0.1, 5, 5, BLACK);
+                        DrawModelEx(carModel, { playerPos.x, -0.1f, playerPos.y }, { 0.0f, 1.0f, 0.0f }, g_Angle, { 0.5f, 0.5f, 0.5f }, GRAY);
 
                         EndMode3D();
                         EndTextureMode();

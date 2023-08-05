@@ -81,7 +81,7 @@ func (m *Manager) setupEventHandlers() {
 		} else {
 			c.color = colorMsg.Color;
 			// notify clients of color change
-			clientDataPayload := BroadcastEvent{BEventColorUpdateMessage, c.UUID, time.Now().Format(time.RFC3339Nano), 0, 0, c.color}
+			clientDataPayload := BroadcastEvent{BEventColorUpdateMessage, c.UUID, time.Now().Format(time.RFC3339Nano), 0, 0, 0.0, c.color}
 			bytepayload, jsonerr := json.Marshal(clientDataPayload)
 			if jsonerr != nil {
 				log.Printf("error creating json broadcast message: %v", jsonerr)
@@ -251,7 +251,7 @@ func (m *Manager) removeClient(client *Client) {
 		delete(m.clients, client)
 		// notify other clients
 		// for each client that is not the same uuid as sending client broadcast update of car x y uuid, timestamp and color
-		clientExitPayload := BroadcastEvent{BEventExternalConnectionExitMessage, client.UUID, time.Now().String(), 0, 0, client.color}
+		clientExitPayload := BroadcastEvent{BEventExternalConnectionExitMessage, client.UUID, time.Now().String(), 0, 0, 0.0, client.color}
 		bytepayload, jsonerr := json.Marshal(clientExitPayload)
 		if jsonerr != nil {
 			log.Printf("error creating json broadcast message: %v", jsonerr)
@@ -262,7 +262,7 @@ func (m *Manager) removeClient(client *Client) {
 
 func (m *Manager) broadcastNewClientInitPosition(c *Client) {
 	// for each client that is not the same uuid as sending client broadcast new car details x y uuid, timestamp and color
-	clientDataPayload := BroadcastEvent{BEventPositionUpdateMessage, c.UUID, time.Now().String(), 0, 0, c.color}
+	clientDataPayload := BroadcastEvent{BEventPositionUpdateMessage, c.UUID, time.Now().String(), 0, 0, 0.0, c.color}
 	bytepayload, jsonerr := json.Marshal(clientDataPayload)
 	if jsonerr != nil {
 		log.Printf("error creating json broadcast message: %v", jsonerr)

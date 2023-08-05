@@ -46,6 +46,7 @@ type BroadcastEvent struct {
 	TimeStamp string `json:"TimeStamp"`
 	XPos int `json:"X"`
 	YPos int `json:"Y"`
+	Angle float32 `json:"Angle"`
 	Color string `json:"Color"`
 }
 

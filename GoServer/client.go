@@ -144,7 +144,7 @@ func (c *Client) writeMessages() {
 			}
 		case <-periodicTimeTickler.C:
 			// Send the Time
-			payload := BroadcastEvent{BEventTimeStampMessage, c.UUID, time.Now().Format(time.RFC3339Nano), 0, 0, ""}
+			payload := BroadcastEvent{BEventTimeStampMessage, c.UUID, time.Now().Format(time.RFC3339Nano), 0, 0, 0.0, ""}
 			bytepayload, jsonerr := json.Marshal(payload)
 			if jsonerr != nil {
 				log.Printf("error creating json message: %v", jsonerr)

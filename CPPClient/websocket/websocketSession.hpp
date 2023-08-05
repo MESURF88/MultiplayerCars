@@ -29,7 +29,7 @@ public:
 
     bool connectWebSocket(std::string host, std::string port, std::string otp);
     void closeConnection();
-    bool sendPosition(int X, int Y);
+    bool sendPosition(int X, int Y, float Angle);
     bool sendColorUpdate(std::string hexValueColor);
     bool sendTextMessage(std::string toUUID, std::string colorStr, std::string text, bool global = true);
 
