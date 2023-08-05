@@ -38,27 +38,27 @@ std::chrono::time_point<std::chrono::high_resolution_clock> stop2;
 #include <rcamera.h>
 
 // game states
-typedef enum {
+enum class GameState {
     STATE_MENU,
     STATE_LOBBY,
     STATE_COUNTDOWN,
     STATE_RACING,
     STATE_RESULTS,
     STATE_GAME_OVER
-} GameState;
+};
 
 // cursor states
-typedef enum {
+enum class CursorState {
     STATE_CURSOR_ENABLED,
     STATE_CURSOR_DISABLED,
-} CursorState;
+};
 
 // accel states
-typedef enum {
+enum class DriveState {
     STATE_DRIVE_IDLE,
     STATE_DRIVE_FORWARD,
     STATE_DRIVE_BACKWARD,
-} DriveState;
+};
 
 // Globals
 static constexpr float SCALEFACTOR = 1000.0f;
@@ -80,10 +80,10 @@ ThreadSafeQueue<std::string> positionJsonQueue;
 std::atomic<bool> g_gameRunning = false;
 std::atomic<bool> g_handleBatch = false;
 bool g_in_state_transition = false;
-GameState currentGameState = STATE_LOBBY;
-CursorState currentCursorState = STATE_CURSOR_ENABLED;
-DriveState currentDriveState = STATE_DRIVE_IDLE;
-DriveState prevDriveState = STATE_DRIVE_IDLE;
+GameState currentGameState = GameState::STATE_LOBBY;
+CursorState currentCursorState = CursorState::STATE_CURSOR_ENABLED;
+DriveState currentDriveState = DriveState::STATE_DRIVE_IDLE;
+DriveState prevDriveState = DriveState::STATE_DRIVE_IDLE;
 
 // Handler classes
 //----------------------------------------------------------------------------------
@@ -501,8 +501,8 @@ int main() {
                 //----------------------------------------------------------------------------------
                 switch (currentGameState)
                 {
-                    case STATE_RACING:
-                        if (STATE_DRIVE_IDLE == currentDriveState)
+                    case GameState::STATE_RACING:
+                        if (DriveState::STATE_DRIVE_IDLE == currentDriveState)
                         {
                             if (INIT_CAR_SPEED < carDriveSpeed)
                             {
@@ -563,11 +563,11 @@ int main() {
                         if (direction) {
                             if (direction > 0)
                             {
-                                currentDriveState = STATE_DRIVE_FORWARD;
+                                currentDriveState = DriveState::STATE_DRIVE_FORWARD;
                             }
                             else
                             {
-                                currentDriveState = STATE_DRIVE_BACKWARD;
+                                currentDriveState = DriveState::STATE_DRIVE_BACKWARD;
                             }
                             prevDriveState = currentDriveState;
                             float directionSpeed = direction * carDriveSpeed * GetFrameTime();
@@ -576,10 +576,10 @@ int main() {
                         }
                         else
                         {
-                            currentDriveState = STATE_DRIVE_IDLE;
+                            currentDriveState = DriveState::STATE_DRIVE_IDLE;
                             if (INIT_CAR_SPEED < carDriveSpeed)
                             {
-                                if (STATE_DRIVE_FORWARD == prevDriveState)
+                                if (DriveState::STATE_DRIVE_FORWARD == prevDriveState)
                                 {
                                     direction = 1;
                                 }
@@ -655,27 +655,27 @@ int main() {
                         }
                         if (windowIsKeyOnlyPressed(KEY_C))
                         {
-                            if (STATE_CURSOR_DISABLED == currentCursorState)
+                            if (CursorState::STATE_CURSOR_DISABLED == currentCursorState)
                             {
                                 EnableCursor();
-                                currentCursorState = STATE_CURSOR_ENABLED;
+                                currentCursorState = CursorState::STATE_CURSOR_ENABLED;
                             }
                             else
                             {
                                 DisableCursor();
-                                currentCursorState = STATE_CURSOR_DISABLED;
+                                currentCursorState = CursorState::STATE_CURSOR_DISABLED;
                             }
                         }
                         if (!mouseOnText && windowIsKeyOnlyPressed(KEY_LEFT_SHIFT))
                         {
                             g_in_state_transition = true;
-                            currentGameState = STATE_LOBBY;
-                            currentCursorState = STATE_CURSOR_ENABLED;
+                            currentGameState = GameState::STATE_LOBBY;
+                            currentCursorState = CursorState::STATE_CURSOR_ENABLED;
                             g_X = 0;
                             g_Y = 125;
                         }
                         break;
-                    case STATE_LOBBY:
+                    case GameState::STATE_LOBBY:
                         if (windowIsKeyPressedUp() || windowIsKeyPressed(KEY_W))
                         {
                             if (g_Y > 1)
@@ -721,12 +721,12 @@ int main() {
                         if (!mouseOnText && playerInRacePortal && windowIsKeyOnlyPressed(KEY_E))
                         {
                             g_in_state_transition = true;
-                            currentGameState = STATE_RACING;
-                            currentCursorState = STATE_CURSOR_DISABLED;
+                            currentGameState = GameState::STATE_RACING;
+                            currentCursorState = CursorState::STATE_CURSOR_DISABLED;
                         }
                         break;
                 }
-                if ((currentGameState == STATE_LOBBY) || ((currentCursorState == STATE_CURSOR_ENABLED) && (currentGameState == STATE_RACING)))
+                if ((currentGameState == GameState::STATE_LOBBY) || ((currentCursorState == CursorState::STATE_CURSOR_ENABLED) && (currentGameState == GameState::STATE_RACING)))
                 {
                     if (windowIsMouseButtonPressed())
                     {
@@ -841,7 +841,7 @@ int main() {
                 if (g_in_state_transition)
                 {
                     // one-time use variables
-                    if (STATE_CURSOR_ENABLED == currentCursorState)
+                    if (CursorState::STATE_CURSOR_ENABLED == currentCursorState)
                     {
                         EnableCursor();
                     }
@@ -858,7 +858,7 @@ int main() {
                 //----------------------------------------------------------------------------------
                 switch (currentGameState)
                 {
-                    case STATE_RACING:
+                    case GameState::STATE_RACING:
                         BeginTextureMode(target3DArea);       // Enable drawing to texture
                         ClearBackground(RAYWHITE);
                         BeginMode3D(camera);
@@ -927,7 +927,7 @@ int main() {
                         drawEscButton();
                         EndDrawing();
                         break;
-                    case STATE_LOBBY:
+                    case GameState::STATE_LOBBY:
                         BeginDrawing();
                         windowDrawBackground();
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
