@@ -1368,24 +1368,24 @@ int main() {
                             drawCenteredOutlinedText(countdownNumber > 0 ? TextFormat("%d", countdownNumber) : "GO", countdownOverlayY, 124, countdownNumber > 0 ? GOLD : LIME);
                         }
 
-                        DrawRectangle(1350, 5, 245, 210, Fade(SKYBLUE, 0.45f));
-                        DrawRectangleLines(1350, 5, 245, 210, DARKBLUE);
+                        DrawRectangle(1350, 5, 245, 235, Fade(SKYBLUE, 0.45f));
+                        DrawRectangleLines(1350, 5, 245, 235, DARKBLUE);
 
                         // draw camera player status
-                        DrawText("Camera status:", 1360, 15, 12, BLACK);
-                        DrawText("Use Alt+C to toggle mouse look", 1360, 30, 12, BLACK);
-                        DrawText("Space: DRS boost", 1360, 45, 12, BLACK);
-                        DrawText("Left Shift: return to lobby", 1360, 60, 12, BLACK);
+                        DrawText("Controls:", 1360, 15, 12, BLACK);
+                        DrawText("W/S: accelerate / brake", 1360, 30, 12, BLACK);
+                        DrawText("A/D: steer", 1360, 45, 12, BLACK);
+                        DrawText("Arrow keys: look around", 1360, 60, 12, BLACK);
+                        DrawText("Alt+C: toggle mouse look", 1360, 75, 12, BLACK);
+                        DrawText("Left Shift: return to lobby", 1360, 90, 12, BLACK);
                         DrawText(TextFormat("- Projection: %s", (camera.projection == CAMERA_PERSPECTIVE) ? "PERSPECTIVE" :
-                            (camera.projection == CAMERA_ORTHOGRAPHIC) ? "ORTHOGRAPHIC" : "CUSTOM"), 1360, 75, 12, BLACK);
-                        DrawText(TextFormat("- Position: (%06.3f, %06.3f, %06.3f)", camera.position.x, camera.position.y, camera.position.z), 1360, 90, 12, BLACK);
-                        DrawText(TextFormat("- Target: (%06.3f, %06.3f, %06.3f)", camera.target.x, camera.target.y, camera.target.z), 1360, 105, 12, BLACK);
-                        DrawText(TextFormat("- DRS: %s", drsHudText), 1360, 120, 12, drsHudColor);
-                        DrawText(TextFormat("- Speed: %03.0f km/h", displaySpeedKmh), 1360, 135, 12, BLACK);
-                        DrawText(TextFormat("- Race: %s", raceSessionStateLabel(raceSession)), 1360, 150, 12, BLACK);
-                        DrawText(TextFormat("- Ready: %d/%d", raceHudReadyCount, raceHudPlayerCount), 1360, 165, 12, localRaceReady ? LIME : BLACK);
-                        DrawText(TextFormat("- Start: %.1f", raceCountdownSeconds), 1360, 180, 12, BLACK);
-                        DrawText(TextFormat("- Lap: %d/%d", raceSessionDisplayLap(raceSession), raceSession.totalLaps), 1360, 195, 12, BLACK);
+                            (camera.projection == CAMERA_ORTHOGRAPHIC) ? "ORTHOGRAPHIC" : "CUSTOM"), 1360, 110, 12, BLACK);
+                        DrawText(TextFormat("- Speed: %03.0f km/h", displaySpeedKmh), 1360, 130, 12, BLACK);
+                        DrawText(TextFormat("- Race: %s", raceSessionStateLabel(raceSession)), 1360, 145, 12, BLACK);
+                        DrawText(TextFormat("- Ready: %d/%d", raceHudReadyCount, raceHudPlayerCount), 1360, 160, 12, localRaceReady ? LIME : BLACK);
+                        DrawText(TextFormat("- Start: %.1f", raceCountdownSeconds), 1360, 175, 12, BLACK);
+                        DrawText(TextFormat("- Lap: %d/%d", raceSessionDisplayLap(raceSession), raceSession.totalLaps), 1360, 190, 12, BLACK);
+                        DrawText(TextFormat("- DRS: %s", drsHudText), 1360, 220, 12, drsHudColor);
 
                         // TODO: make function
                         drawFadeBackgroundLowerBox();
