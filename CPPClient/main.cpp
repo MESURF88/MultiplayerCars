@@ -24,6 +24,7 @@
 #include <mutex>
 #include <string>
 #include <chrono>
+#include <vector>
 #include <simdjson.h>
 
 // timing benchmark
@@ -36,6 +37,7 @@ std::chrono::time_point<std::chrono::high_resolution_clock> stop1;
 std::chrono::time_point<std::chrono::high_resolution_clock> stop2;
 #endif
 #include <rcamera.h>
+#include <rlgl.h>
 
 // game states
 enum class GameState {
@@ -100,6 +102,117 @@ static void logJsonPayloadError(const std::string& sourceName, const std::string
     std::cout << "JSON parse error in " << sourceName << std::endl;
     std::cout << "  details: " << details << std::endl;
     std::cout << "  payload: " << jsonSnippet(jsonText) << std::endl;
+}
+
+static char pathSeparator()
+{
+#if defined(WIN32)
+    return '\\';
+#else
+    return '/';
+#endif
+}
+
+static bool fileExists(const std::string& path)
+{
+    std::ifstream file(path);
+    return file.good();
+}
+
+static std::string trimTrailingSeparators(std::string path)
+{
+    while (!path.empty() && (path.back() == '/' || path.back() == '\\'))
+    {
+        path.pop_back();
+    }
+    return path;
+}
+
+static std::string directoryName(const std::string& path)
+{
+    const std::size_t separator = path.find_last_of("/\\");
+    if (separator == std::string::npos)
+    {
+        return "";
+    }
+    return path.substr(0, separator);
+}
+
+static std::string joinPath(const std::string& left, const std::string& right)
+{
+    if (left.empty())
+    {
+        return right;
+    }
+    if (left.back() == '/' || left.back() == '\\')
+    {
+        return left + right;
+    }
+    return left + pathSeparator() + right;
+}
+
+static std::string appDirectory()
+{
+    const char* appDir = GetApplicationDirectory();
+    if (appDir == nullptr)
+    {
+        return "";
+    }
+    return trimTrailingSeparators(std::string(appDir));
+}
+
+static std::string findResourcePath(const std::string& fileName)
+{
+    const std::string appDir = appDirectory();
+    const std::string parentDir = directoryName(appDir);
+
+    std::vector<std::string> candidates = {
+        joinPath("CPPClient/resources", fileName),
+        joinPath("resources", fileName)
+    };
+
+    if (!appDir.empty())
+    {
+        candidates.push_back(joinPath(joinPath(appDir, "resources"), fileName));
+    }
+    if (!parentDir.empty())
+    {
+        candidates.push_back(joinPath(joinPath(parentDir, "resources"), fileName));
+    }
+
+    for (const std::string& candidate : candidates)
+    {
+        if (fileExists(candidate))
+        {
+            std::cout << "Using resource " << candidate << std::endl;
+            return candidate;
+        }
+    }
+
+    std::cout << "error: could not find resource " << fileName << std::endl;
+    return joinPath("resources", fileName);
+}
+
+static Texture2D loadTextureResource(const std::string& fileName)
+{
+    const std::string path = findResourcePath(fileName);
+    Texture2D texture = LoadTexture(path.c_str());
+    if (texture.id == 0)
+    {
+        std::cout << "error: failed to load texture resource " << path << std::endl;
+    }
+    return texture;
+}
+
+static Model loadModelResource(const std::string& fileName)
+{
+    const std::string path = findResourcePath(fileName);
+    Model model = LoadModel(path.c_str());
+    if (model.meshCount == 0)
+    {
+        std::cout << "error: failed to load model resource " << path << std::endl;
+    }
+    return model;
 }
 
 // Handler classes
@@ -328,33 +441,18 @@ int main() {
             float carDriveSpeed = INIT_CAR_SPEED;
             float carTurnSpeed = INIT_CAR_TURN_SPEED;
 
-            const char* pBuf = GetApplicationDirectory();
-            std::string exePath(pBuf);
-            // remove .exe
-            while (exePath.back() != '\\')
+            Image imMap = LoadImage(findResourcePath("cubicmap.png").c_str());      // Load cubicmap image (RAM)
+            if (imMap.data == nullptr)
             {
-                exePath.pop_back();
-                if (exePath.empty())
-                {
-                    break;
-                }
+                std::cout << "error: cubicmap.png failed to load; using empty fallback collision map" << std::endl;
+                imMap = GenImageColor(32, 16, BLACK);
             }
-
-#if defined(WIN32)  
-            Image imMap = LoadImage(std::string(exePath + "resources\\cubicmap.png").c_str());      // Load cubicmap image (RAM)
-#else
-            Image imMap = LoadImage(std::string(exePath + "resources/cubicmap.png").c_str());
-#endif
             Texture2D cubicmap = LoadTextureFromImage(imMap);       // Convert image to texture to display (VRAM)
             Mesh mesh = GenMeshCubicmap(imMap, { 1.0f, 1.0f, 1.0f });
             Model model = LoadModelFromMesh(mesh);
 
             // NOTE: By default each cube is mapped to one part of texture atlas
-#if defined(WIN32)  
-            Texture2D texture = LoadTexture(std::string(exePath + "resources\\cubicmap_atlas.png").c_str());    // Load map texture
-#else
-            Texture2D texture = LoadTexture(std::string(exePath + "resources/cubicmap_atlas.png").c_str());
-#endif
+            Texture2D texture = loadTextureResource("cubicmap_atlas.png");    // Load map texture
             model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texture;    // Set map diffuse texture
 
             // Get map image data to be used for collision detection
@@ -364,11 +462,25 @@ int main() {
             // Create a RenderTexture2D to be used for render to texture
             RenderTexture2D target3DArea = LoadRenderTexture(windowScreenWidth(), windowYBoundary());
 
-#if defined(WIN32)  
-            Model carModel = LoadModel(std::string(exePath + "resources\\raceFuture.obj").c_str());
-#else
-            Model carModel = LoadModel(std::string(exePath + "resources/raceFuture.obj").c_str());
-#endif
+            Texture2D groundTexture = loadTextureResource("ground_texture.png");
+            SetTextureWrap(groundTexture, TEXTURE_WRAP_REPEAT);
+            Mesh groundMesh = GenMeshPlane(128.0f, 128.0f, 32, 32);
+            if (groundMesh.texcoords != nullptr)
+            {
+                for (int i = 0; i < groundMesh.vertexCount * 2; ++i)
+                {
+                    groundMesh.texcoords[i] *= 24.0f;
+                }
+            }
+            Model groundModel = LoadModelFromMesh(groundMesh);
+            groundModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = groundTexture;
+
+            Texture2D skyboxTexture = loadTextureResource("skybox_texture.png");
+            SetTextureWrap(skyboxTexture, TEXTURE_WRAP_CLAMP);
+            Model skyboxModel = LoadModelFromMesh(GenMeshCube(1.0f, 1.0f, 1.0f));
+            skyboxModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = skyboxTexture;
+
+            Model carModel = loadModelResource("raceFuture.obj");
 
             Vector3 mapPosition = { -16.0f, 0.0f, -8.0f };  // Set model position
             //----------------------------------------------------------------------------------
@@ -908,13 +1020,17 @@ int main() {
                         BeginTextureMode(target3DArea);       // Enable drawing to texture
                         ClearBackground(RAYWHITE);
                         BeginMode3D(camera);
+                        rlDisableBackfaceCulling();
+                        DrawModel(skyboxModel, camera.position, 160.0f, WHITE);
+                        rlEnableBackfaceCulling();
+                        DrawModel(groundModel, { 0.0f, -0.03f, 0.0f }, 1.0f, WHITE);
                         DrawModel(model, mapPosition, 1.0f, WHITE);                     // Draw map
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
                             DrawCylinder({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.15f, 0.15f, 0.3f, 5, GetColor(colorHexToString(coords->second.m_color)));
-                            DrawModelEx(carModel, { static_cast<float>(coords->second.m_coords.m_X) / SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y) / SCALEFACTOR }, { 0.0f, 1.0f, 0.0f }, coords->second.m_coords.m_Angle, { 0.5f, 0.5f, 0.5f }, GRAY);
+                            DrawModelEx(carModel, { static_cast<float>(coords->second.m_coords.m_X) / SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y) / SCALEFACTOR }, { 0.0f, 1.0f, 0.0f }, coords->second.m_coords.m_Angle, { 0.5f, 0.5f, 0.5f }, WHITE);
                         }
-                        DrawModelEx(carModel, { playerPos.x, -0.1f, playerPos.y }, { 0.0f, 1.0f, 0.0f }, g_Angle, { 0.5f, 0.5f, 0.5f }, GRAY);
+                        DrawModelEx(carModel, { playerPos.x, -0.1f, playerPos.y }, { 0.0f, 1.0f, 0.0f }, g_Angle, { 0.5f, 0.5f, 0.5f }, WHITE);
 
                         EndMode3D();
                         EndTextureMode();
@@ -1034,6 +1150,10 @@ int main() {
             UnloadTexture(cubicmap);        // Unload cubicmap texture
             UnloadTexture(texture);         // Unload map texture
             UnloadModel(model);             // Unload map model
+            UnloadModel(groundModel);       // Unload ground model
+            UnloadTexture(groundTexture);   // Unload ground texture
+            UnloadModel(skyboxModel);       // Unload skybox model
+            UnloadTexture(skyboxTexture);   // Unload skybox texture
             UnloadModel(carModel);          // Unload car model
 
             session->closeConnection();
