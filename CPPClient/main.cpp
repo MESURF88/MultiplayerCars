@@ -93,7 +93,10 @@ static constexpr float CAMERA_TURN_RESISTANCE_SPEED_START = 6.5f;
 static constexpr float CAMERA_TURN_RESISTANCE_START_DEGREES = 20.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_FULL_DEGREES = 120.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_MIN_FACTOR = 0.25f;
+static constexpr bool ENABLE_MAP_BOUNDARY = true;
 static constexpr bool ENABLE_MAP_COLLISION = false;
+static constexpr float BOUNDARY_WALL_HEIGHT = 0.45f;
+static constexpr float BOUNDARY_WALL_THICKNESS = 0.25f;
 static constexpr float GROUND_PLANE_SIZE = 8192.0f;
 static constexpr float GROUND_TEXTURE_REPEATS = 1536.0f;
 static constexpr float CAMERA_FOLLOW_DISTANCE = 6.0f;
@@ -900,6 +903,28 @@ int main() {
                         g_Y = (playerPos.y)* SCALEFACTOR;
 
                         bool collisionDetected = false;
+                        if (ENABLE_MAP_BOUNDARY)
+                        {
+                            const float mapMinX = mapPosition.x - 0.5f;
+                            const float mapMaxX = mapMinX + static_cast<float>(cubicmap.width);
+                            const float mapMinZ = mapPosition.z - 0.5f;
+                            const float mapMaxZ = mapMinZ + static_cast<float>(cubicmap.height);
+                            const bool outsideMapBounds =
+                                (playerPos.x < mapMinX + playerRadius) ||
+                                (playerPos.x > mapMaxX - playerRadius) ||
+                                (playerPos.y < mapMinZ + playerRadius) ||
+                                (playerPos.y > mapMaxZ - playerRadius);
+
+                            if (outsideMapBounds)
+                            {
+                                carPosition = oldCarPosition;
+                                carVelocity = 0.0f;
+                                drsTimer = 0.0f;
+                                carTurnSpeed = INIT_CAR_TURN_SPEED;
+                                currentDriveState = DriveState::STATE_DRIVE_IDLE;
+                                collisionDetected = true;
+                            }
+                        }
                         if (ENABLE_MAP_COLLISION)
                         {
                             // Check map collisions using image data and player position.
@@ -1172,6 +1197,25 @@ int main() {
                         rlEnableDepthMask();
                         DrawModel(groundModel, { 0.0f, -0.03f, 0.0f }, 1.0f, WHITE);
                         // DrawModel(model, mapPosition, 1.0f, WHITE);                  // Draw collision map
+                        if (ENABLE_MAP_BOUNDARY)
+                        {
+                            const float mapMinX = mapPosition.x - 0.5f;
+                            const float mapMaxX = mapMinX + static_cast<float>(cubicmap.width);
+                            const float mapMinZ = mapPosition.z - 0.5f;
+                            const float mapMaxZ = mapMinZ + static_cast<float>(cubicmap.height);
+                            const float mapCenterX = (mapMinX + mapMaxX) * 0.5f;
+                            const float mapCenterZ = (mapMinZ + mapMaxZ) * 0.5f;
+                            const float mapWidth = mapMaxX - mapMinX;
+                            const float mapDepth = mapMaxZ - mapMinZ;
+                            const float wallY = (BOUNDARY_WALL_HEIGHT * 0.5f) - 0.03f;
+                            const Vector3 horizontalWallSize = { mapWidth + BOUNDARY_WALL_THICKNESS * 2.0f, BOUNDARY_WALL_HEIGHT, BOUNDARY_WALL_THICKNESS };
+                            const Vector3 verticalWallSize = { BOUNDARY_WALL_THICKNESS, BOUNDARY_WALL_HEIGHT, mapDepth + BOUNDARY_WALL_THICKNESS * 2.0f };
+
+                            DrawCubeV({ mapCenterX, wallY, mapMinZ }, horizontalWallSize, GRAY);
+                            DrawCubeV({ mapCenterX, wallY, mapMaxZ }, horizontalWallSize, GRAY);
+                            DrawCubeV({ mapMinX, wallY, mapCenterZ }, verticalWallSize, GRAY);
+                            DrawCubeV({ mapMaxX, wallY, mapCenterZ }, verticalWallSize, GRAY);
+                        }
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
                             DrawCylinder({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.15f, 0.15f, 0.3f, 5, GetColor(colorHexToString(coords->second.m_color)));
