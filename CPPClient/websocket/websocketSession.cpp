@@ -126,6 +126,27 @@ bool WebsocketSession::sendTextMessage(std::string toUUID, std::string colorStr,
     return succ;
 }
 
+bool WebsocketSession::sendRaceStartRequest(const std::string& courseId, int laps, int countdownMs)
+{
+    bool succ = false;
+    if (m_isConnected && m_wss.is_message_done())
+    {
+        sprintf(m_raceStartRawJson, R"( { "Type": %d , "Payload": { "CourseID": "%s", "Laps": %d, "CountdownMs": %d } } )", EventRaceStartMessage, courseId.c_str(), laps, countdownMs);
+        size_t raceStartBufferLength = std::strlen(m_raceStartRawJson);
+        std::unique_ptr<char[]> raceStartBuffer{ new char[raceStartBufferLength] };
+        size_t new_length{};
+        auto error = simdjson::minify(m_raceStartRawJson, raceStartBufferLength, raceStartBuffer.get(), new_length);
+        if (error)
+        {
+            logOutgoingJsonError("race start message", m_raceStartRawJson, error);
+            return succ;
+        }
+        asyncWriteQueue.push(std::string(raceStartBuffer.get(), new_length));
+        succ = true;
+    }
+    return succ;
+}
+
 void WebsocketSession::setSessionColor(std::string currColor)
 {
     m_currColor = currColor;

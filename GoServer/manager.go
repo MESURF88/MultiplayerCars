@@ -110,6 +110,40 @@ func (m *Manager) setupEventHandlers() {
 		return nil
 	}
 
+	m.handlers[EventRaceStartMessage] = func(e Event, c *Client) error {
+		var raceStartMsg RaceStartRequestEvent
+		if err := json.Unmarshal(e.Payload, &raceStartMsg); err != nil {
+			log.Printf("error marshalling race start message: %v", err)
+		} else {
+			if raceStartMsg.CourseID == "" {
+				raceStartMsg.CourseID = "simple-circuit"
+			}
+			if raceStartMsg.Laps <= 0 {
+				raceStartMsg.Laps = 10
+			}
+			if raceStartMsg.CountdownMs <= 0 {
+				raceStartMsg.CountdownMs = 3000
+			}
+
+			now := time.Now()
+			clientDataPayload := BroadcastRaceStartEvent{
+				BType:        BEventRaceStartMessage,
+				UUID:         c.UUID,
+				TimeStamp:    now.Format(time.RFC3339Nano),
+				CourseID:     raceStartMsg.CourseID,
+				Laps:         raceStartMsg.Laps,
+				CountdownMs:  raceStartMsg.CountdownMs,
+				StartEpochMs: now.Add(time.Duration(raceStartMsg.CountdownMs) * time.Millisecond).UnixMilli(),
+			}
+			bytepayload, jsonerr := json.Marshal(clientDataPayload)
+			if jsonerr != nil {
+				log.Printf("error creating json broadcast message: %v", jsonerr)
+			}
+			m.broadcastUpdateToAll(bytepayload)
+		}
+		return nil
+	}
+
 	m.handlers[EventPositionDebugMessage] = func(e Event, c *Client) error {
 		// send raw payload as passthrough down, its faster
 		if err := c.connection.WriteMessage(websocket.TextMessage, e.Payload); err != nil {
@@ -273,6 +307,14 @@ func (m *Manager) broadcastNewClientInitPosition(c *Client) {
 func (m *Manager) broadcastUpdateToPeers(sendingUUID string, bytepayload []byte) {
 	for clientElement, connected := range m.clients {
 		if (clientElement.UUID != sendingUUID) && (connected)	{
+			clientElement.egress <- bytepayload
+		}
+	}
+}
+
+func (m *Manager) broadcastUpdateToAll(bytepayload []byte) {
+	for clientElement, connected := range m.clients {
+		if connected {
 			clientElement.egress <- bytepayload
 		}
 	}

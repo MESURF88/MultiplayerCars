@@ -8,6 +8,7 @@ const (
 	EventPositionMessage = 0
 	EventColorUpdateMessage = 1
 	EventTextUpdateMessage = 2
+	EventRaceStartMessage = 3
 
 
 	EventPositionDebugMessage = 20
@@ -34,6 +35,7 @@ const (
 	BEventColorUpdateMessage = 2
 	BEventExternalConnectionExitMessage = 3
 	BEventTextUpdateMessage = 4
+	BEventRaceStartMessage = 5
 
 
 
@@ -78,4 +80,20 @@ type TextUpdateEvent struct {
 	Color    string `json:"Color"`
 	Text     string `json:"Text"`
 	Global   bool   `json:"Global"`
+}
+
+type RaceStartRequestEvent struct {
+	CourseID    string `json:"CourseID"`
+	Laps        int    `json:"Laps"`
+	CountdownMs int    `json:"CountdownMs"`
+}
+
+type BroadcastRaceStartEvent struct {
+	BType        int    `json:"Type"`
+	UUID         string `json:"UUID"`
+	TimeStamp    string `json:"TimeStamp"`
+	CourseID     string `json:"CourseID"`
+	Laps         int    `json:"Laps"`
+	CountdownMs  int    `json:"CountdownMs"`
+	StartEpochMs int64  `json:"StartEpochMs"`
 }

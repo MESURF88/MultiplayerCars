@@ -132,6 +132,7 @@ set(inc
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/carClass.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/courseMap.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raceSession.hpp
 )
 
 set(source
@@ -141,6 +142,7 @@ set(source
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/carClass.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/courseMap.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raceSession.cpp
     main.cpp
 )
 

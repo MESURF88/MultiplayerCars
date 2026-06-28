@@ -18,6 +18,7 @@
 #include "windowContext.hpp"
 #include "carClass.hpp"
 #include "courseMap.hpp"
+#include "raceSession.hpp"
 #include <functional>
 #include <iostream>
 #include <fstream>
@@ -103,6 +104,7 @@ static constexpr float CAMERA_TARGET_HEIGHT = 0.55f;
 static constexpr float CAMERA_MIN_PITCH = 8.0f;
 static constexpr float CAMERA_MAX_PITCH = 55.0f;
 static constexpr float CAMERA_START_PITCH = 20.0f;
+static constexpr int RACE_START_COUNTDOWN_MS = 3000;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
@@ -554,6 +556,8 @@ int main() {
             float carVelocity = 0.0f;
             float carTurnSpeed = INIT_CAR_TURN_SPEED;
             float drsTimer = 0.0f;
+            RaceSession raceSession;
+            resetRaceSession(raceSession, raceCourse);
             playerPos = carPosition;
             updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
 
@@ -625,6 +629,21 @@ int main() {
             int carPaintMaterialIndex = findCarPaintMaterialIndex(carModel);
 
             Vector3 mapPosition = { -16.0f, 0.0f, -8.0f };  // Set model position
+            auto resetCarToCourseStart = [&]() {
+                carPosition = raceCourse.startPosition;
+                playerPos = carPosition;
+                cameraAngle = raceCourse.startAngle;
+                cameraPitch = CAMERA_START_PITCH;
+                carAngle = raceCourse.startAngle;
+                carVelocity = 0.0f;
+                drsTimer = 0.0f;
+                carTurnSpeed = INIT_CAR_TURN_SPEED;
+                currentDriveState = DriveState::STATE_DRIVE_IDLE;
+                g_X = static_cast<int>(carPosition.x * SCALEFACTOR);
+                g_Y = static_cast<int>(carPosition.y * SCALEFACTOR);
+                g_Angle = -carAngle + CAR_ANGLE_ADJUSTMENT;
+                updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
+            };
             //----------------------------------------------------------------------------------
             // End Initialize model/3d variables here
 
@@ -771,6 +790,23 @@ int main() {
                                 }
                             }
                             break;
+                            case BEventType::BEventRaceStartMessage:
+                            {
+                                const std::string courseId = std::string{ parsedJson["CourseID"].get_string().value() };
+                                const int laps = static_cast<int>(parsedJson["Laps"].get_int64().value());
+                                const std::int64_t startEpochMs = parsedJson["StartEpochMs"].get_int64().value();
+                                if (courseId == raceCourse.courseId)
+                                {
+                                    resetCarToCourseStart();
+                                    scheduleRaceStart(raceSession, raceCourse, startEpochMs, laps);
+                                    currentGameState = GameState::STATE_RACING;
+                                    currentCursorState = CursorState::STATE_CURSOR_ENABLED;
+                                    mouseLookEnabled = false;
+                                    skipMouseLookFrame = true;
+                                    g_in_state_transition = true;
+                                }
+                            }
+                            break;
                             }
                         }
                         catch (std::out_of_range& e)
@@ -804,15 +840,24 @@ int main() {
                     case GameState::STATE_RACING:
                     {
                         const float frameTime = GetFrameTime();
-                        const int throttleInput = IsKeyDown(KEY_W) - IsKeyDown(KEY_S);
-                        if ((carVelocity > CAR_STOP_EPSILON) && IsKeyPressed(KEY_SPACE))
+                        const std::int64_t raceNowEpochMs = currentEpochMilliseconds();
+                        updateRaceSession(raceSession, raceCourse, carPosition, playerRadius, raceNowEpochMs);
+                        const bool raceDrivingEnabled = raceSessionCanDrive(raceSession);
+                        const int throttleInput = raceDrivingEnabled ? (IsKeyDown(KEY_W) - IsKeyDown(KEY_S)) : 0;
+                        if (raceDrivingEnabled && (carVelocity > CAR_STOP_EPSILON) && IsKeyPressed(KEY_SPACE))
                         {
                             drsTimer = DRS_DURATION_SECONDS;
                         }
 
-                        if (drsTimer > 0.0f)
+                        if (raceDrivingEnabled && (drsTimer > 0.0f))
                         {
                             drsTimer = std::max(0.0f, drsTimer - frameTime);
+                        }
+                        else if (!raceDrivingEnabled)
+                        {
+                            carVelocity = 0.0f;
+                            drsTimer = 0.0f;
+                            currentDriveState = DriveState::STATE_DRIVE_IDLE;
                         }
 
                         const bool drsActive = drsTimer > 0.0f;
@@ -928,6 +973,7 @@ int main() {
                         carPosition.y += carDirection.y * carVelocity * frameTime;
                         playerPos = carPosition;
                         g_Angle = -carAngle + CAR_ANGLE_ADJUSTMENT;
+                        updateRaceSession(raceSession, raceCourse, carPosition, playerRadius, raceNowEpochMs);
 
                         if ((oldCarPosition.x != carPosition.x) || (oldCarPosition.y != carPosition.y) || (oldCarAngle != carAngle))
                         {
@@ -1064,24 +1110,7 @@ int main() {
                         }
                         if (!mouseOnText && playerInRacePortal && windowIsKeyOnlyPressed(KEY_E))
                         {
-                            g_in_state_transition = true;
-                            currentGameState = GameState::STATE_RACING;
-                            currentCursorState = CursorState::STATE_CURSOR_ENABLED;
-                            mouseLookEnabled = false;
-                            skipMouseLookFrame = true;
-                            carPosition = raceCourse.startPosition;
-                            playerPos = carPosition;
-                            cameraAngle = raceCourse.startAngle;
-                            cameraPitch = CAMERA_START_PITCH;
-                            carAngle = raceCourse.startAngle;
-                            carVelocity = 0.0f;
-                            drsTimer = 0.0f;
-                            carTurnSpeed = INIT_CAR_TURN_SPEED;
-                            currentDriveState = DriveState::STATE_DRIVE_IDLE;
-                            g_X = static_cast<int>(carPosition.x * SCALEFACTOR);
-                            g_Y = static_cast<int>(carPosition.y * SCALEFACTOR);
-                            g_Angle = -carAngle + CAR_ANGLE_ADJUSTMENT;
-                            updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
+                            session->sendRaceStartRequest(raceCourse.courseId, raceCourse.lapCount, RACE_START_COUNTDOWN_MS);
                         }
                         break;
                 }
@@ -1233,6 +1262,7 @@ int main() {
                         {
                             drawCourseWalls(raceCourse);
                         }
+                        drawCourseStartLine(raceCourse);
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
                             DrawCylinder({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.15f, 0.15f, 0.3f, 5, GetColor(colorHexToString(coords->second.m_color)));
@@ -1254,9 +1284,11 @@ int main() {
                         const char* drsHudText = drsHudActive ? "ACTIVE" : (drsHudReady ? "READY (SPACE)" : "NEED SPEED");
                         const Color drsHudColor = drsHudActive ? GOLD : (drsHudReady ? LIME : GRAY);
                         const float displaySpeedKmh = std::abs(carVelocity) * DISPLAY_TOP_SPEED_KMH / DRS_MAX_CAR_SPEED;
+                        const std::int64_t raceHudNowEpochMs = currentEpochMilliseconds();
+                        const float raceCountdownSeconds = raceSessionCountdownSeconds(raceSession, raceHudNowEpochMs);
 
-                        DrawRectangle(1350, 5, 245, 145, Fade(SKYBLUE, 0.45f));
-                        DrawRectangleLines(1350, 5, 245, 145, DARKBLUE);
+                        DrawRectangle(1350, 5, 245, 190, Fade(SKYBLUE, 0.45f));
+                        DrawRectangleLines(1350, 5, 245, 190, DARKBLUE);
 
                         // draw camera player status
                         DrawText("Camera status:", 1360, 15, 12, BLACK);
@@ -1269,6 +1301,9 @@ int main() {
                         DrawText(TextFormat("- Target: (%06.3f, %06.3f, %06.3f)", camera.target.x, camera.target.y, camera.target.z), 1360, 105, 12, BLACK);
                         DrawText(TextFormat("- DRS: %s", drsHudText), 1360, 120, 12, drsHudColor);
                         DrawText(TextFormat("- Speed: %03.0f km/h", displaySpeedKmh), 1360, 135, 12, BLACK);
+                        DrawText(TextFormat("- Race: %s", raceSessionStateLabel(raceSession)), 1360, 150, 12, BLACK);
+                        DrawText(TextFormat("- Start: %.1f", raceCountdownSeconds), 1360, 165, 12, BLACK);
+                        DrawText(TextFormat("- Lap: %d/%d", raceSessionDisplayLap(raceSession), raceSession.totalLaps), 1360, 180, 12, BLACK);
 
                         // TODO: make function
                         drawFadeBackgroundLowerBox();
