@@ -12,7 +12,13 @@ contains the C++ code for Boost.Beast websockets, cpr/libcurl HTTP, and raylib g
 
 # installing for client windows
 
-Recommended Windows setup from the repository root:
+Recommended Windows setup from the repository root. Open PowerShell in the root of your `MultiplayerCars` checkout:
+
+```powershell
+...\MultiplayerCars
+```
+
+Then run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/windows_setup_system.ps1
