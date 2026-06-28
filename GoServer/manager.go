@@ -1,13 +1,13 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"sync"
-	"errors"
 	"time"
-	"context"
-	"encoding/json"
 
 	"github.com/gorilla/websocket"
 )
@@ -28,6 +28,8 @@ var (
 	ErrEventNotSupported = errors.New("this event type is not supported")
 )
 
+const defaultRaceCountdownMs = 5000
+
 // checkOrigin will check origin and return true if its allowed
 func checkOrigin(r *http.Request) bool {
 
@@ -44,7 +46,9 @@ func checkOrigin(r *http.Request) bool {
 
 // Manager is used to hold references to all Clients Registered, and Broadcasting etc
 type Manager struct {
-	clients ClientList
+	clients     ClientList
+	raceCourses map[string]string
+	raceReady   map[string]bool
 
 	// Using a syncMutex here to be able to lock state before editing clients
 	// Could also use Channels to block
@@ -58,8 +62,10 @@ type Manager struct {
 // NewManager is used to initalize all the values inside the manager
 func NewManager(ctx context.Context) *Manager {
 	m := &Manager{
-		clients: make(ClientList),
-		handlers: make(map[int]EventHandler),
+		clients:     make(ClientList),
+		raceCourses: make(map[string]string),
+		raceReady:   make(map[string]bool),
+		handlers:    make(map[int]EventHandler),
 		// Create a new retentionMap that removes Otps older than 5 seconds
 		otps: NewRetentionMap(ctx, 5*time.Second),
 	}
@@ -70,7 +76,7 @@ func NewManager(ctx context.Context) *Manager {
 // setupEventHandlers configures and adds all handlers
 func (m *Manager) setupEventHandlers() {
 	m.handlers[EventPositionMessage] = func(e Event, c *Client) error {
-        // send raw payload as passthrough down, its faster
+		// send raw payload as passthrough down, its faster
 		m.broadcastUpdateToPeers(c.UUID, e.Payload)
 		return nil
 	}
@@ -122,8 +128,9 @@ func (m *Manager) setupEventHandlers() {
 				raceStartMsg.Laps = 10
 			}
 			if raceStartMsg.CountdownMs <= 0 {
-				raceStartMsg.CountdownMs = 3000
+				raceStartMsg.CountdownMs = defaultRaceCountdownMs
 			}
+			m.clearRaceReadyState(raceStartMsg.CourseID)
 
 			now := time.Now()
 			clientDataPayload := BroadcastRaceStartEvent{
@@ -140,6 +147,61 @@ func (m *Manager) setupEventHandlers() {
 				log.Printf("error creating json broadcast message: %v", jsonerr)
 			}
 			m.broadcastUpdateToAll(bytepayload)
+		}
+		return nil
+	}
+
+	m.handlers[EventRaceReadyMessage] = func(e Event, c *Client) error {
+		var raceReadyMsg RaceReadyRequestEvent
+		if err := json.Unmarshal(e.Payload, &raceReadyMsg); err != nil {
+			log.Printf("error marshalling race ready message: %v", err)
+		} else {
+			if raceReadyMsg.CourseID == "" {
+				raceReadyMsg.CourseID = "simple-circuit"
+			}
+
+			if raceReadyMsg.Ready {
+				raceReadyMsg.InRace = true
+			}
+			if raceReadyMsg.Laps <= 0 {
+				raceReadyMsg.Laps = 10
+			}
+			readyCount, playerCount, allReady := m.updateRaceReadyState(c.UUID, raceReadyMsg.CourseID, raceReadyMsg.Ready, raceReadyMsg.InRace)
+			now := time.Now()
+			clientDataPayload := BroadcastRaceReadyEvent{
+				BType:       BEventRaceReadyMessage,
+				UUID:        c.UUID,
+				TimeStamp:   now.Format(time.RFC3339Nano),
+				CourseID:    raceReadyMsg.CourseID,
+				Ready:       raceReadyMsg.Ready,
+				InRace:      raceReadyMsg.InRace,
+				ReadyCount:  readyCount,
+				PlayerCount: playerCount,
+			}
+			bytepayload, jsonerr := json.Marshal(clientDataPayload)
+			if jsonerr != nil {
+				log.Printf("error creating json broadcast message: %v", jsonerr)
+			}
+			m.broadcastUpdateToAll(bytepayload)
+
+			if allReady {
+				m.clearRaceReadyState(raceReadyMsg.CourseID)
+				countdownMs := defaultRaceCountdownMs
+				startPayload := BroadcastRaceStartEvent{
+					BType:        BEventRaceStartMessage,
+					UUID:         c.UUID,
+					TimeStamp:    now.Format(time.RFC3339Nano),
+					CourseID:     raceReadyMsg.CourseID,
+					Laps:         raceReadyMsg.Laps,
+					CountdownMs:  countdownMs,
+					StartEpochMs: now.Add(time.Duration(countdownMs) * time.Millisecond).UnixMilli(),
+				}
+				startBytes, startJsonErr := json.Marshal(startPayload)
+				if startJsonErr != nil {
+					log.Printf("error creating json broadcast message: %v", startJsonErr)
+				}
+				m.broadcastUpdateToAll(startBytes)
+			}
 		}
 		return nil
 	}
@@ -283,6 +345,8 @@ func (m *Manager) removeClient(client *Client) {
 		client.connection.Close()
 		// remove
 		delete(m.clients, client)
+		delete(m.raceCourses, client.UUID)
+		delete(m.raceReady, client.UUID)
 		// notify other clients
 		// for each client that is not the same uuid as sending client broadcast update of car x y uuid, timestamp and color
 		clientExitPayload := BroadcastEvent{BEventExternalConnectionExitMessage, client.UUID, time.Now().String(), 0, 0, 0.0, client.color}
@@ -291,6 +355,48 @@ func (m *Manager) removeClient(client *Client) {
 			log.Printf("error creating json broadcast message: %v", jsonerr)
 		}
 		m.broadcastUpdateToPeers(client.UUID, bytepayload)
+	}
+}
+
+func (m *Manager) updateRaceReadyState(uuid string, courseID string, ready bool, inRace bool) (int, int, bool) {
+	m.Lock()
+	defer m.Unlock()
+
+	if inRace {
+		m.raceCourses[uuid] = courseID
+		if ready {
+			m.raceReady[uuid] = true
+		} else {
+			delete(m.raceReady, uuid)
+		}
+	} else {
+		delete(m.raceCourses, uuid)
+		delete(m.raceReady, uuid)
+	}
+
+	readyCount := 0
+	playerCount := 0
+	for clientElement, connected := range m.clients {
+		if connected && m.raceCourses[clientElement.UUID] == courseID {
+			playerCount++
+			if m.raceReady[clientElement.UUID] {
+				readyCount++
+			}
+		}
+	}
+
+	return readyCount, playerCount, playerCount > 0 && readyCount == playerCount
+}
+
+func (m *Manager) clearRaceReadyState(courseID string) {
+	m.Lock()
+	defer m.Unlock()
+
+	for uuid, readyCourseID := range m.raceCourses {
+		if readyCourseID == courseID {
+			delete(m.raceCourses, uuid)
+			delete(m.raceReady, uuid)
+		}
 	}
 }
 

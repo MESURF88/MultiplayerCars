@@ -1,4 +1,3 @@
-
 package main
 
 import "encoding/json"
@@ -9,7 +8,7 @@ const (
 	EventColorUpdateMessage = 1
 	EventTextUpdateMessage = 2
 	EventRaceStartMessage = 3
-
+	EventRaceReadyMessage = 4
 
 	EventPositionDebugMessage = 20
 )
@@ -26,9 +25,8 @@ type Event struct {
 // EventHandler is a function signature that is used to affect messages on the socket and triggered
 // depending on the type
 type EventHandler func(event Event, c *Client) error
-	
-const (
 
+const (
 	//BroadcastEvent Types IMPORTANT MUST MATCH CLIENT ENUM
 	BEventTimeStampMessage = 0
 	BEventPositionUpdateMessage = 1
@@ -36,38 +34,37 @@ const (
 	BEventExternalConnectionExitMessage = 3
 	BEventTextUpdateMessage = 4
 	BEventRaceStartMessage = 5
-
-
+	BEventRaceReadyMessage = 6
 
 	BEventPositionDebugUpdateMessage = 20
 )
 
 type BroadcastEvent struct {
-	BType int `json:"Type"`
-	UUID string `json:"UUID"`
+	BType     int     `json:"Type"`
+	UUID      string  `json:"UUID"`
 	TimeStamp string `json:"TimeStamp"`
-	XPos int `json:"X"`
-	YPos int `json:"Y"`
-	Angle float32 `json:"Angle"`
-	Color string `json:"Color"`
+	XPos      int     `json:"X"`
+	YPos      int     `json:"Y"`
+	Angle     float32 `json:"Angle"`
+	Color     string  `json:"Color"`
 }
 
 type BroadcastPositionEvent struct {
-	BType int `json:"Type"`
-	UUID string `json:"UUID"`
-	XPos int `json:"X"`
-	YPos int `json:"Y"`
+	BType int    `json:"Type"`
+	UUID  string `json:"UUID"`
+	XPos  int    `json:"X"`
+	YPos  int    `json:"Y"`
 	Color string `json:"Color"`
 }
 
 type BroadcastTextMessageEvent struct {
-	BType int `json:"Type"`
-	FromUUID string `json:"FromUUID"`
-	ToUUID   string `json:"ToUUID"`
-	Color    string `json:"Color"`
-	Text     string `json:"Text"`
+	BType     int    `json:"Type"`
+	FromUUID  string `json:"FromUUID"`
+	ToUUID    string `json:"ToUUID"`
+	Color     string `json:"Color"`
+	Text      string `json:"Text"`
 	TimeStamp string `json:"TimeStamp"`
-	Global   bool   `json:"Global"`
+	Global    bool   `json:"Global"`
 }
 
 type ColorUpdateEvent struct {
@@ -88,6 +85,13 @@ type RaceStartRequestEvent struct {
 	CountdownMs int    `json:"CountdownMs"`
 }
 
+type RaceReadyRequestEvent struct {
+	CourseID string `json:"CourseID"`
+	Ready    bool   `json:"Ready"`
+	InRace   bool   `json:"InRace"`
+	Laps     int    `json:"Laps"`
+}
+
 type BroadcastRaceStartEvent struct {
 	BType        int    `json:"Type"`
 	UUID         string `json:"UUID"`
@@ -96,4 +100,15 @@ type BroadcastRaceStartEvent struct {
 	Laps         int    `json:"Laps"`
 	CountdownMs  int    `json:"CountdownMs"`
 	StartEpochMs int64  `json:"StartEpochMs"`
+}
+
+type BroadcastRaceReadyEvent struct {
+	BType       int    `json:"Type"`
+	UUID        string `json:"UUID"`
+	TimeStamp   string `json:"TimeStamp"`
+	CourseID    string `json:"CourseID"`
+	Ready       bool   `json:"Ready"`
+	InRace      bool   `json:"InRace"`
+	ReadyCount  int    `json:"ReadyCount"`
+	PlayerCount int    `json:"PlayerCount"`
 }

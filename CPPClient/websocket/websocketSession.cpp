@@ -2,6 +2,7 @@
 #include "uuidGenerator.hpp"
 #include "event.hpp"
 #include <iostream>
+#include <sstream>
 #include <simdjson.h>
 
 namespace
@@ -131,17 +132,51 @@ bool WebsocketSession::sendRaceStartRequest(const std::string& courseId, int lap
     bool succ = false;
     if (m_isConnected && m_wss.is_message_done())
     {
-        sprintf(m_raceStartRawJson, R"( { "Type": %d , "Payload": { "CourseID": "%s", "Laps": %d, "CountdownMs": %d } } )", EventRaceStartMessage, courseId.c_str(), laps, countdownMs);
-        size_t raceStartBufferLength = std::strlen(m_raceStartRawJson);
+        std::ostringstream raceStartJson;
+        raceStartJson << R"( { "Type": )" << EventRaceStartMessage
+            << R"( , "Payload": { "CourseID": ")" << courseId
+            << R"(", "Laps": )" << laps
+            << R"(, "CountdownMs": )" << countdownMs
+            << R"( } } )";
+        const std::string raceStartPayload = raceStartJson.str();
+        size_t raceStartBufferLength = raceStartPayload.size();
         std::unique_ptr<char[]> raceStartBuffer{ new char[raceStartBufferLength] };
         size_t new_length{};
-        auto error = simdjson::minify(m_raceStartRawJson, raceStartBufferLength, raceStartBuffer.get(), new_length);
+        auto error = simdjson::minify(raceStartPayload.c_str(), raceStartBufferLength, raceStartBuffer.get(), new_length);
         if (error)
         {
-            logOutgoingJsonError("race start message", m_raceStartRawJson, error);
+            logOutgoingJsonError("race start message", raceStartPayload.c_str(), error);
             return succ;
         }
         asyncWriteQueue.push(std::string(raceStartBuffer.get(), new_length));
+        succ = true;
+    }
+    return succ;
+}
+
+bool WebsocketSession::sendRaceReadyUpdate(const std::string& courseId, bool ready, bool inRace, int laps)
+{
+    bool succ = false;
+    if (m_isConnected && m_wss.is_message_done())
+    {
+        std::ostringstream raceReadyJson;
+        raceReadyJson << R"( { "Type": )" << EventRaceReadyMessage
+            << R"( , "Payload": { "CourseID": ")" << courseId
+            << R"(", "Ready": )" << (ready ? "true" : "false")
+            << R"(, "InRace": )" << (inRace ? "true" : "false")
+            << R"(, "Laps": )" << laps
+            << R"( } } )";
+        const std::string raceReadyPayload = raceReadyJson.str();
+        size_t raceReadyBufferLength = raceReadyPayload.size();
+        std::unique_ptr<char[]> raceReadyBuffer{ new char[raceReadyBufferLength] };
+        size_t new_length{};
+        auto error = simdjson::minify(raceReadyPayload.c_str(), raceReadyBufferLength, raceReadyBuffer.get(), new_length);
+        if (error)
+        {
+            logOutgoingJsonError("race ready message", raceReadyPayload.c_str(), error);
+            return succ;
+        }
+        asyncWriteQueue.push(std::string(raceReadyBuffer.get(), new_length));
         succ = true;
     }
     return succ;

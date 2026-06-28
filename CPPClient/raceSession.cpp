@@ -17,6 +17,7 @@ void resetRaceSession(RaceSession& session, const CourseMap& course)
     session.startEpochMs = 0;
     session.previousStartLineDistance = courseStartLineSignedDistance(course, course.startPosition);
     session.hasPreviousStartLineDistance = true;
+    session.lapArmed = false;
 }
 
 void scheduleRaceStart(RaceSession& session, const CourseMap& course, std::int64_t startEpochMs, int totalLaps)
@@ -27,6 +28,7 @@ void scheduleRaceStart(RaceSession& session, const CourseMap& course, std::int64
     session.startEpochMs = startEpochMs;
     session.previousStartLineDistance = courseStartLineSignedDistance(course, course.startPosition);
     session.hasPreviousStartLineDistance = true;
+    session.lapArmed = false;
 }
 
 void updateRaceSession(RaceSession& session, const CourseMap& course, Vector2 carPosition, float carRadius, std::int64_t nowEpochMs)
@@ -45,9 +47,18 @@ void updateRaceSession(RaceSession& session, const CourseMap& course, Vector2 ca
     }
 
     if ((session.state == RaceRunState::STATE_RACING) &&
-        courseCrossedStartLineForward(course, session.previousStartLineDistance, currentDistance, carRadius))
+        !session.lapArmed &&
+        courseOverlapsLapCheckpoint(course, carPosition, carRadius))
+    {
+        session.lapArmed = true;
+    }
+
+    if ((session.state == RaceRunState::STATE_RACING) &&
+        session.lapArmed &&
+        courseCrossedStartLineForward(course, carPosition, session.previousStartLineDistance, currentDistance, carRadius))
     {
         session.completedLaps++;
+        session.lapArmed = false;
         if (session.completedLaps >= session.totalLaps)
         {
             session.state = RaceRunState::STATE_FINISHED;

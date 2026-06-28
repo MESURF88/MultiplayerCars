@@ -271,6 +271,19 @@ rm -rf CPPClient/builddbg CPPClient/build
 
 ```
 
+# generating courses
+
+```
+py tools/course_generator.py
+```
+
+The generator writes:
+- `CPPClient/resources/courses/simple_circuit.json` for runtime loading
+- `CPPClient/resources/courses/simple_circuit.svg` as a quick top-down preview
+- `CPPClient/generatedCourses.cpp` as the compiled fallback course data
+
+In WSL/Linux, run the same utility with `python3 tools/course_generator.py`.
+
 # running client and server locally linux
 
 ```

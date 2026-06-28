@@ -32,6 +32,7 @@ public:
     bool sendColorUpdate(std::string hexValueColor);
     bool sendTextMessage(std::string toUUID, std::string colorStr, std::string text, bool global = true);
     bool sendRaceStartRequest(const std::string& courseId, int laps, int countdownMs);
+    bool sendRaceReadyUpdate(const std::string& courseId, bool ready, bool inRace = true, int laps = 0);
 
     void setSessionColor(std::string currColor);
     std::string getSessionColor();
@@ -58,7 +59,6 @@ private:
     char m_posRawJson[300];
     char m_colorRawJson[300];
     char m_textMsgRawJson[300];
-    char m_raceStartRawJson[300];
 };
 
 #endif // _WEBSOCKETSESSION_

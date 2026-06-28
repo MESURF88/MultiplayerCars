@@ -104,7 +104,6 @@ static constexpr float CAMERA_TARGET_HEIGHT = 0.55f;
 static constexpr float CAMERA_MIN_PITCH = 8.0f;
 static constexpr float CAMERA_MAX_PITCH = 55.0f;
 static constexpr float CAMERA_START_PITCH = 20.0f;
-static constexpr int RACE_START_COUNTDOWN_MS = 3000;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
@@ -332,6 +331,21 @@ static Model loadModelResource(const std::string& fileName)
     return model;
 }
 
+static void drawCenteredOutlinedText(const char* text, int centerY, int fontSize, Color color)
+{
+    const int textWidth = MeasureText(text, fontSize);
+    const int x = (windowScreenWidth() - textWidth) / 2;
+    const int y = centerY - (fontSize / 2);
+    const int shadowOffset = std::max(2, fontSize / 18);
+
+    DrawText(text, x + shadowOffset, y + shadowOffset, fontSize, Fade(BLACK, 0.75f));
+    DrawText(text, x - 1, y, fontSize, Fade(BLACK, 0.65f));
+    DrawText(text, x + 1, y, fontSize, Fade(BLACK, 0.65f));
+    DrawText(text, x, y - 1, fontSize, Fade(BLACK, 0.65f));
+    DrawText(text, x, y + 1, fontSize, Fade(BLACK, 0.65f));
+    DrawText(text, x, y, fontSize, color);
+}
+
 // Handler classes
 //----------------------------------------------------------------------------------
 
@@ -545,7 +559,7 @@ int main() {
             camera.fovy = 45.0f;                                // Camera field-of-view Y
             camera.projection = CAMERA_PERSPECTIVE;             // Camera projection type
             float playerRadius = 0.1f;  // Collision radius (player is modelled as a cilinder for collision)
-            CourseMap raceCourse = createSimpleCircuitCourse();
+            CourseMap raceCourse = loadCourseOrDefault(findResourcePath("courses/simple_circuit.json"));
             Vector2 carPosition = raceCourse.startPosition;
             Vector2 playerPos = { 0 };
             Vector3 rotation = { 0 };
@@ -558,6 +572,9 @@ int main() {
             float drsTimer = 0.0f;
             RaceSession raceSession;
             resetRaceSession(raceSession, raceCourse);
+            bool localRaceReady = false;
+            int raceReadyCount = 0;
+            int racePlayerCount = 0;
             playerPos = carPosition;
             updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
 
@@ -798,12 +815,30 @@ int main() {
                                 if (courseId == raceCourse.courseId)
                                 {
                                     resetCarToCourseStart();
+                                    localRaceReady = false;
+                                    raceReadyCount = 0;
+                                    racePlayerCount = 0;
                                     scheduleRaceStart(raceSession, raceCourse, startEpochMs, laps);
                                     currentGameState = GameState::STATE_RACING;
                                     currentCursorState = CursorState::STATE_CURSOR_ENABLED;
                                     mouseLookEnabled = false;
                                     skipMouseLookFrame = true;
                                     g_in_state_transition = true;
+                                }
+                            }
+                            break;
+                            case BEventType::BEventRaceReadyMessage:
+                            {
+                                const std::string courseId = std::string{ parsedJson["CourseID"].get_string().value() };
+                                if (courseId == raceCourse.courseId)
+                                {
+                                    const std::string readyUUID = std::string{ parsedJson["UUID"].get_string().value() };
+                                    raceReadyCount = static_cast<int>(parsedJson["ReadyCount"].get_int64().value());
+                                    racePlayerCount = static_cast<int>(parsedJson["PlayerCount"].get_int64().value());
+                                    if (readyUUID == session->getClientUUID())
+                                    {
+                                        localRaceReady = parsedJson["Ready"].get_bool().value();
+                                    }
                                 }
                             }
                             break;
@@ -844,6 +879,16 @@ int main() {
                         updateRaceSession(raceSession, raceCourse, carPosition, playerRadius, raceNowEpochMs);
                         const bool raceDrivingEnabled = raceSessionCanDrive(raceSession);
                         const int throttleInput = raceDrivingEnabled ? (IsKeyDown(KEY_W) - IsKeyDown(KEY_S)) : 0;
+                        if (!mouseOnText &&
+                            (raceSession.state == RaceRunState::STATE_WAITING) &&
+                            !localRaceReady &&
+                            IsKeyPressed(KEY_SPACE))
+                        {
+                            localRaceReady = true;
+                            raceReadyCount = std::max(raceReadyCount, 1);
+                            racePlayerCount = std::max(racePlayerCount, static_cast<int>(gui_externalplayers.size()) + 1);
+                            session->sendRaceReadyUpdate(raceCourse.courseId, true, true, raceCourse.lapCount);
+                        }
                         if (raceDrivingEnabled && (carVelocity > CAR_STOP_EPSILON) && IsKeyPressed(KEY_SPACE))
                         {
                             drsTimer = DRS_DURATION_SECONDS;
@@ -1055,6 +1100,14 @@ int main() {
                         }
                         if (!mouseOnText && windowIsKeyOnlyPressed(KEY_LEFT_SHIFT))
                         {
+                            if (raceSession.state == RaceRunState::STATE_WAITING)
+                            {
+                                session->sendRaceReadyUpdate(raceCourse.courseId, false, false, raceCourse.lapCount);
+                            }
+                            localRaceReady = false;
+                            raceReadyCount = 0;
+                            racePlayerCount = 0;
+                            resetRaceSession(raceSession, raceCourse);
                             g_in_state_transition = true;
                             currentGameState = GameState::STATE_LOBBY;
                             currentCursorState = CursorState::STATE_CURSOR_ENABLED;
@@ -1110,7 +1163,17 @@ int main() {
                         }
                         if (!mouseOnText && playerInRacePortal && windowIsKeyOnlyPressed(KEY_E))
                         {
-                            session->sendRaceStartRequest(raceCourse.courseId, raceCourse.lapCount, RACE_START_COUNTDOWN_MS);
+                            resetCarToCourseStart();
+                            resetRaceSession(raceSession, raceCourse);
+                            localRaceReady = false;
+                            raceReadyCount = 0;
+                            racePlayerCount = std::max(1, static_cast<int>(gui_externalplayers.size()) + 1);
+                            currentGameState = GameState::STATE_RACING;
+                            currentCursorState = CursorState::STATE_CURSOR_ENABLED;
+                            mouseLookEnabled = false;
+                            skipMouseLookFrame = true;
+                            g_in_state_transition = true;
+                            session->sendRaceReadyUpdate(raceCourse.courseId, false, true, raceCourse.lapCount);
                         }
                         break;
                 }
@@ -1263,6 +1326,7 @@ int main() {
                             drawCourseWalls(raceCourse);
                         }
                         drawCourseStartLine(raceCourse);
+                        drawCourseCheckpoint(raceCourse);
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
                             DrawCylinder({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.15f, 0.15f, 0.3f, 5, GetColor(colorHexToString(coords->second.m_color)));
@@ -1286,9 +1350,26 @@ int main() {
                         const float displaySpeedKmh = std::abs(carVelocity) * DISPLAY_TOP_SPEED_KMH / DRS_MAX_CAR_SPEED;
                         const std::int64_t raceHudNowEpochMs = currentEpochMilliseconds();
                         const float raceCountdownSeconds = raceSessionCountdownSeconds(raceSession, raceHudNowEpochMs);
+                        const int raceHudPlayerCount = std::max(1, racePlayerCount);
+                        const int raceHudReadyCount = std::clamp(raceReadyCount, 0, raceHudPlayerCount);
 
-                        DrawRectangle(1350, 5, 245, 190, Fade(SKYBLUE, 0.45f));
-                        DrawRectangleLines(1350, 5, 245, 190, DARKBLUE);
+                        if (raceSession.state == RaceRunState::STATE_WAITING)
+                        {
+                            const int stagingOverlayY = windowYBoundary() / 3;
+                            drawCenteredOutlinedText(localRaceReady ? "READY" : "READY UP", stagingOverlayY - 36, 52, localRaceReady ? LIME : GOLD);
+                            drawCenteredOutlinedText(localRaceReady ? "Waiting for players" : "Press SPACE", stagingOverlayY + 14, 28, RAYWHITE);
+                            drawCenteredOutlinedText(TextFormat("%d/%d ready", raceHudReadyCount, raceHudPlayerCount), stagingOverlayY + 48, 24, RAYWHITE);
+                        }
+                        else if (raceSession.state == RaceRunState::STATE_COUNTDOWN)
+                        {
+                            const int countdownOverlayY = windowYBoundary() / 2;
+                            const int countdownNumber = static_cast<int>(std::ceil(raceCountdownSeconds));
+                            drawCenteredOutlinedText("RACE START", countdownOverlayY - 84, 36, RAYWHITE);
+                            drawCenteredOutlinedText(countdownNumber > 0 ? TextFormat("%d", countdownNumber) : "GO", countdownOverlayY, 124, countdownNumber > 0 ? GOLD : LIME);
+                        }
+
+                        DrawRectangle(1350, 5, 245, 210, Fade(SKYBLUE, 0.45f));
+                        DrawRectangleLines(1350, 5, 245, 210, DARKBLUE);
 
                         // draw camera player status
                         DrawText("Camera status:", 1360, 15, 12, BLACK);
@@ -1302,8 +1383,9 @@ int main() {
                         DrawText(TextFormat("- DRS: %s", drsHudText), 1360, 120, 12, drsHudColor);
                         DrawText(TextFormat("- Speed: %03.0f km/h", displaySpeedKmh), 1360, 135, 12, BLACK);
                         DrawText(TextFormat("- Race: %s", raceSessionStateLabel(raceSession)), 1360, 150, 12, BLACK);
-                        DrawText(TextFormat("- Start: %.1f", raceCountdownSeconds), 1360, 165, 12, BLACK);
-                        DrawText(TextFormat("- Lap: %d/%d", raceSessionDisplayLap(raceSession), raceSession.totalLaps), 1360, 180, 12, BLACK);
+                        DrawText(TextFormat("- Ready: %d/%d", raceHudReadyCount, raceHudPlayerCount), 1360, 165, 12, localRaceReady ? LIME : BLACK);
+                        DrawText(TextFormat("- Start: %.1f", raceCountdownSeconds), 1360, 180, 12, BLACK);
+                        DrawText(TextFormat("- Lap: %d/%d", raceSessionDisplayLap(raceSession), raceSession.totalLaps), 1360, 195, 12, BLACK);
 
                         // TODO: make function
                         drawFadeBackgroundLowerBox();

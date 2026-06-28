@@ -10,6 +10,7 @@ enum BEventType
 	BEventExternalConnectionExitMessage,
 	BEventTextUpdateMessage,
 	BEventRaceStartMessage,
+	BEventRaceReadyMessage,
 
 
 	BEventPositionDebugUpdateMessage = 20,
@@ -21,6 +22,7 @@ enum ClientUpdateEventType
 	EventColorUpdateMessage,
 	EventTextUpdateMessage,
 	EventRaceStartMessage,
+	EventRaceReadyMessage,
 
 
 

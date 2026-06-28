@@ -1,0 +1,87 @@
+{
+  "courseId": "simple-circuit",
+  "lapCount": 10,
+  "start": {
+    "position": {
+      "x": 2.0,
+      "z": -14.0
+    },
+    "angle": 0.0
+  },
+  "startLine": {
+    "center": {
+      "x": 0.0,
+      "z": -14.0
+    },
+    "width": 1.0,
+    "depth": 12.0,
+    "forwardAngle": 0.0,
+    "checkerCount": 14
+  },
+  "lapCheckpoint": {
+    "center": {
+      "x": 0.0,
+      "z": 14.0
+    },
+    "width": 1.0,
+    "depth": 12.0
+  },
+  "walls": [
+    {
+      "x": -35.0,
+      "z": -23.0,
+      "width": 70.0,
+      "depth": 1.0,
+      "color": "808080"
+    },
+    {
+      "x": -35.0,
+      "z": 22.0,
+      "width": 70.0,
+      "depth": 1.0,
+      "color": "808080"
+    },
+    {
+      "x": -35.0,
+      "z": -22.0,
+      "width": 1.0,
+      "depth": 44.0,
+      "color": "808080"
+    },
+    {
+      "x": 34.0,
+      "z": -22.0,
+      "width": 1.0,
+      "depth": 44.0,
+      "color": "808080"
+    },
+    {
+      "x": -16.0,
+      "z": -8.0,
+      "width": 32.0,
+      "depth": 1.0,
+      "color": "808080"
+    },
+    {
+      "x": -16.0,
+      "z": 7.0,
+      "width": 32.0,
+      "depth": 1.0,
+      "color": "808080"
+    },
+    {
+      "x": -16.0,
+      "z": -8.0,
+      "width": 1.0,
+      "depth": 16.0,
+      "color": "808080"
+    },
+    {
+      "x": 15.0,
+      "z": -8.0,
+      "width": 1.0,
+      "depth": 16.0,
+      "color": "808080"
+    }
+  ]
+}

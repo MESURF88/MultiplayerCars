@@ -20,6 +20,7 @@ struct RaceSession
     std::int64_t startEpochMs = 0;
     float previousStartLineDistance = 0.0f;
     bool hasPreviousStartLineDistance = false;
+    bool lapArmed = false;
 };
 
 std::int64_t currentEpochMilliseconds();
