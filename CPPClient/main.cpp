@@ -86,6 +86,9 @@ static constexpr float MIN_CAR_TURN_SPEED = 50.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_START_DEGREES = 20.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_FULL_DEGREES = 120.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_MIN_FACTOR = 0.25f;
+static constexpr bool ENABLE_MAP_COLLISION = false;
+static constexpr float GROUND_PLANE_SIZE = 8192.0f;
+static constexpr float GROUND_TEXTURE_REPEATS = 1536.0f;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
@@ -486,21 +489,46 @@ int main() {
 
             Texture2D groundTexture = loadTextureResource("ground_texture.png");
             SetTextureWrap(groundTexture, TEXTURE_WRAP_REPEAT);
-            Mesh groundMesh = GenMeshPlane(128.0f, 128.0f, 32, 32);
+            Mesh groundMesh = GenMeshPlane(GROUND_PLANE_SIZE, GROUND_PLANE_SIZE, 64, 64);
             if (groundMesh.texcoords != nullptr)
             {
                 for (int i = 0; i < groundMesh.vertexCount * 2; ++i)
                 {
-                    groundMesh.texcoords[i] *= 24.0f;
+                    groundMesh.texcoords[i] *= GROUND_TEXTURE_REPEATS;
                 }
             }
             Model groundModel = LoadModelFromMesh(groundMesh);
             groundModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = groundTexture;
 
-            Texture2D skyboxTexture = loadTextureResource("skybox_texture.png");
-            SetTextureWrap(skyboxTexture, TEXTURE_WRAP_CLAMP);
             Model skyboxModel = LoadModelFromMesh(GenMeshCube(1.0f, 1.0f, 1.0f));
-            skyboxModel.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = skyboxTexture;
+            Shader skyboxShader = LoadShader(
+                findResourcePath("shaders/glsl330/skybox.vs").c_str(),
+                findResourcePath("shaders/glsl330/skybox.fs").c_str());
+            skyboxModel.materials[0].shader = skyboxShader;
+
+            int environmentMap = MATERIAL_MAP_CUBEMAP;
+            int doGamma = 0;
+            int vflipped = 0;
+            SetShaderValue(skyboxShader, GetShaderLocation(skyboxShader, "environmentMap"), &environmentMap, SHADER_UNIFORM_INT);
+            SetShaderValue(skyboxShader, GetShaderLocation(skyboxShader, "doGamma"), &doGamma, SHADER_UNIFORM_INT);
+            SetShaderValue(skyboxShader, GetShaderLocation(skyboxShader, "vflipped"), &vflipped, SHADER_UNIFORM_INT);
+
+            Image skyboxImage = LoadImage(findResourcePath("skybox_texture.png").c_str());
+            TextureCubemap skyboxCubemap = { 0 };
+            if (skyboxImage.data != nullptr)
+            {
+                skyboxCubemap = LoadTextureCubemap(skyboxImage, CUBEMAP_LAYOUT_AUTO_DETECT);
+                UnloadImage(skyboxImage);
+            }
+
+            if (skyboxCubemap.id == 0)
+            {
+                std::cout << "warning: skybox_texture.png is not a supported cubemap layout; using fallback sky color" << std::endl;
+                Image fallbackSkybox = GenImageColor(1536, 256, SKYBLUE);
+                skyboxCubemap = LoadTextureCubemap(fallbackSkybox, CUBEMAP_LAYOUT_LINE_HORIZONTAL);
+                UnloadImage(fallbackSkybox);
+            }
+            skyboxModel.materials[0].maps[MATERIAL_MAP_CUBEMAP].texture = skyboxCubemap;
 
             Model carModel = loadModelResource("raceFuture.obj");
 
@@ -825,25 +853,27 @@ int main() {
                         g_X = (playerPos.x)* SCALEFACTOR;
                         g_Y = (playerPos.y)* SCALEFACTOR;
 
-                        // Check map collisions using image data and player position
-                        // TODO: Improvement: Just check player surrounding cells for collision
                         bool collisionDetected = false;
-                        for (int y = 0; y < cubicmap.height; y++)
+                        if (ENABLE_MAP_COLLISION)
                         {
-                            for (int x = 0; x < cubicmap.width; x++)
+                            // Check map collisions using image data and player position.
+                            // Disabled while using the open ground/skybox scene.
+                            for (int y = 0; y < cubicmap.height; y++)
                             {
-                                if ((mapPixels[y * cubicmap.width + x].r == 255) &&       // Collision: white pixel, only check R channel
-                                    (CheckCollisionCircleRec(playerPos, playerRadius,
-                                        {
-                                    mapPosition.x - 0.5f + x * 1.0f, mapPosition.z - 0.5f + y * 1.0f, 1.0f, 1.0f
-                                        })))
+                                for (int x = 0; x < cubicmap.width; x++)
                                 {
-                                    // Collision detected, reset camera position
-                                    camera.position = oldCamPos;
-                                    carVelocity = 0.0f;
-                                    carTurnSpeed = INIT_CAR_TURN_SPEED;
-                                    currentDriveState = DriveState::STATE_DRIVE_IDLE;
-                                    collisionDetected = true;
+                                    if ((mapPixels[y * cubicmap.width + x].r == 255) &&
+                                        (CheckCollisionCircleRec(playerPos, playerRadius,
+                                            {
+                                        mapPosition.x - 0.5f + x * 1.0f, mapPosition.z - 0.5f + y * 1.0f, 1.0f, 1.0f
+                                            })))
+                                    {
+                                        camera.position = oldCamPos;
+                                        carVelocity = 0.0f;
+                                        carTurnSpeed = INIT_CAR_TURN_SPEED;
+                                        currentDriveState = DriveState::STATE_DRIVE_IDLE;
+                                        collisionDetected = true;
+                                    }
                                 }
                             }
                         }
@@ -1074,10 +1104,12 @@ int main() {
                         ClearBackground(RAYWHITE);
                         BeginMode3D(camera);
                         rlDisableBackfaceCulling();
-                        DrawModel(skyboxModel, camera.position, 160.0f, WHITE);
+                        rlDisableDepthMask();
+                        DrawModel(skyboxModel, { 0.0f, 0.0f, 0.0f }, 1.0f, WHITE);
                         rlEnableBackfaceCulling();
+                        rlEnableDepthMask();
                         DrawModel(groundModel, { 0.0f, -0.03f, 0.0f }, 1.0f, WHITE);
-                        DrawModel(model, mapPosition, 1.0f, WHITE);                     // Draw map
+                        // DrawModel(model, mapPosition, 1.0f, WHITE);                  // Draw collision map
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
                             DrawCylinder({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.15f, 0.15f, 0.3f, 5, GetColor(colorHexToString(coords->second.m_color)));
@@ -1205,8 +1237,9 @@ int main() {
             UnloadModel(model);             // Unload map model
             UnloadModel(groundModel);       // Unload ground model
             UnloadTexture(groundTexture);   // Unload ground texture
+            UnloadShader(skyboxShader);     // Unload skybox shader
+            UnloadTexture(skyboxCubemap);   // Unload skybox cubemap texture
             UnloadModel(skyboxModel);       // Unload skybox model
-            UnloadTexture(skyboxTexture);   // Unload skybox texture
             UnloadModel(carModel);          // Unload car model
 
             session->closeConnection();
