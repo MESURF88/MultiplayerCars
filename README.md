@@ -243,6 +243,7 @@ This script:
 
 The C++ library versions are now pinned in CPPClient/CMakeLists.txt:
 - raylib 6.0
+- raylib-cpp v6.0.2
 - cpr 1.14.0
 - nlohmann/json v3.12.0
 - simdjson v4.6.4

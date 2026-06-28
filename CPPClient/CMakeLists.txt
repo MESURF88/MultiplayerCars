@@ -4,6 +4,10 @@ set(ProjName carclient)
 
 project(${ProjName} VERSION 1.0.0 LANGUAGES CXX)
 
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 OLD)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -30,6 +34,7 @@ include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
 
 set(RAYLIB_VERSION 6.0)
+set(RAYLIB_CPP_VERSION v6.0.2)
 set(CPR_VERSION 1.14.0)
 set(NLOHMANN_JSON_VERSION 3.12.0)
 set(NLOHMANN_JSON_TAG v3.12.0)
@@ -99,8 +104,16 @@ endif()
 
 set(RAYLIB_CPP_IS_MAIN FALSE)
 option(BUILD_RAYLIB_CPP_EXAMPLES "Build raylib-cpp examples" ${RAYLIB_CPP_IS_MAIN})
-
-add_subdirectory(include)
+find_package(raylib_cpp 6.0.2 QUIET)
+if(NOT raylib_cpp_FOUND)
+    FetchContent_Declare(
+        raylib_cpp
+        GIT_REPOSITORY https://github.com/RobLoach/raylib-cpp.git
+        GIT_TAG ${RAYLIB_CPP_VERSION}
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(raylib_cpp)
+endif()
 
 set(includes_dir
     ${CMAKE_CURRENT_SOURCE_DIR}/http
