@@ -76,6 +76,11 @@ static constexpr float INIT_CAR_TURN_SPEED = 80.0f;
 static constexpr float THRESHOLD_CAR_SPEED1 = 4.0f;
 static constexpr float THRESHOLD_CAR_SPEED2 = 7.0f;
 static constexpr float MAX_CAR_SPEED = 8.0f;
+static constexpr float DRS_MAX_CAR_SPEED = 15.0f;
+static constexpr float DISPLAY_TOP_SPEED_KMH = 200.0f;
+static constexpr float DRS_DURATION_SECONDS = 0.45f;
+static constexpr float DRS_ACCELERATION_MULTIPLIER = 1.35f;
+static constexpr float OVERSPEED_DECELERATION = 4.0f;
 static constexpr float MAX_REVERSE_CAR_SPEED = 4.0f;
 static constexpr float CAR_FORWARD_ACCELERATION = 5.5f;
 static constexpr float CAR_REVERSE_ACCELERATION = 3.5f;
@@ -83,6 +88,8 @@ static constexpr float CAR_BRAKE_DECELERATION = 10.0f;
 static constexpr float CAR_COAST_DECELERATION = 3.0f;
 static constexpr float CAR_STOP_EPSILON = 0.05f;
 static constexpr float MIN_CAR_TURN_SPEED = 50.0f;
+static constexpr float TURN_SPEED_DROP_START = 3.0f;
+static constexpr float CAMERA_TURN_RESISTANCE_SPEED_START = 6.5f;
 static constexpr float CAMERA_TURN_RESISTANCE_START_DEGREES = 20.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_FULL_DEGREES = 120.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_MIN_FACTOR = 0.25f;
@@ -137,6 +144,14 @@ static float normalizeAngleDegrees(float angle)
     angle = fmodf(angle, 360.0f);
     if (angle < 0.0f) angle += 360.0f;
     return angle;
+}
+
+static float smoothstep(float edge0, float edge1, float value)
+{
+    if (edge0 == edge1) return (value < edge0) ? 0.0f : 1.0f;
+
+    const float t = std::clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
 }
 
 static Vector2 directionFromAngle(float angleDegrees)
@@ -492,6 +507,7 @@ int main() {
             float carAngle = -90;
             float carVelocity = 0.0f;
             float carTurnSpeed = INIT_CAR_TURN_SPEED;
+            float drsTimer = 0.0f;
             updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
 
             Image imMap = LoadImage(findResourcePath("cubicmap.png").c_str());      // Load cubicmap image (RAM)
@@ -741,6 +757,18 @@ int main() {
                     {
                         const float frameTime = GetFrameTime();
                         const int throttleInput = IsKeyDown(KEY_W) - IsKeyDown(KEY_S);
+                        if ((carVelocity > CAR_STOP_EPSILON) && IsKeyPressed(KEY_SPACE))
+                        {
+                            drsTimer = DRS_DURATION_SECONDS;
+                        }
+
+                        if (drsTimer > 0.0f)
+                        {
+                            drsTimer = std::max(0.0f, drsTimer - frameTime);
+                        }
+
+                        const bool drsActive = drsTimer > 0.0f;
+                        const float maxForwardSpeed = drsActive ? DRS_MAX_CAR_SPEED : MAX_CAR_SPEED;
 
                         if (throttleInput > 0)
                         {
@@ -752,7 +780,8 @@ int main() {
                             }
                             else
                             {
-                                carVelocity += CAR_FORWARD_ACCELERATION * frameTime;
+                                const float accelerationMultiplier = drsActive ? DRS_ACCELERATION_MULTIPLIER : 1.0f;
+                                carVelocity += CAR_FORWARD_ACCELERATION * accelerationMultiplier * frameTime;
                             }
                         }
                         else if (throttleInput < 0)
@@ -783,14 +812,21 @@ int main() {
                             }
                         }
 
-                        carVelocity = std::clamp(carVelocity, -MAX_REVERSE_CAR_SPEED, MAX_CAR_SPEED);
+                        if (!drsActive && (carVelocity > MAX_CAR_SPEED))
+                        {
+                            carVelocity -= OVERSPEED_DECELERATION * frameTime;
+                            if (carVelocity < MAX_CAR_SPEED) carVelocity = MAX_CAR_SPEED;
+                        }
+
+                        carVelocity = std::clamp(carVelocity, -MAX_REVERSE_CAR_SPEED, maxForwardSpeed);
                         if (std::abs(carVelocity) < CAR_STOP_EPSILON)
                         {
                             carVelocity = 0.0f;
                         }
 
                         const float absVelocity = std::abs(carVelocity);
-                        carTurnSpeed = std::clamp(INIT_CAR_TURN_SPEED - (absVelocity * 4.0f), MIN_CAR_TURN_SPEED, INIT_CAR_TURN_SPEED);
+                        const float turnSpeedDrop = smoothstep(TURN_SPEED_DROP_START, maxForwardSpeed, absVelocity);
+                        carTurnSpeed = INIT_CAR_TURN_SPEED - ((INIT_CAR_TURN_SPEED - MIN_CAR_TURN_SPEED) * turnSpeedDrop);
 
                         rotation = { 0 };
                         mousePositionDelta = GetMouseDelta();
@@ -828,7 +864,9 @@ int main() {
                             const float steeringDirection = (carVelocity < 0.0f) ? -1.0f : 1.0f;
                             const float cameraOffset = std::abs(shortestAngleDifference(carAngle, cameraAngle));
                             const float resistanceRange = CAMERA_TURN_RESISTANCE_FULL_DEGREES - CAMERA_TURN_RESISTANCE_START_DEGREES;
-                            const float resistanceAmount = std::clamp((cameraOffset - CAMERA_TURN_RESISTANCE_START_DEGREES) / resistanceRange, 0.0f, 1.0f);
+                            const float cameraOffsetResistance = std::clamp((cameraOffset - CAMERA_TURN_RESISTANCE_START_DEGREES) / resistanceRange, 0.0f, 1.0f);
+                            const float speedResistance = smoothstep(CAMERA_TURN_RESISTANCE_SPEED_START, maxForwardSpeed, absVelocity);
+                            const float resistanceAmount = cameraOffsetResistance * speedResistance;
                             const float cameraTurnFactor = 1.0f - (resistanceAmount * (1.0f - CAMERA_TURN_RESISTANCE_MIN_FACTOR));
                             carAngle += (IsKeyDown(KEY_D) - IsKeyDown(KEY_A)) * carTurnSpeed * cameraTurnFactor * frameTime * steeringDirection;
                             carAngle = normalizeAngleDegrees(carAngle);
@@ -878,6 +916,7 @@ int main() {
                                     {
                                         carPosition = oldCarPosition;
                                         carVelocity = 0.0f;
+                                        drsTimer = 0.0f;
                                         carTurnSpeed = INIT_CAR_TURN_SPEED;
                                         currentDriveState = DriveState::STATE_DRIVE_IDLE;
                                         collisionDetected = true;
@@ -979,6 +1018,7 @@ int main() {
                             cameraPitch = CAMERA_START_PITCH;
                             carAngle = -90.0f;
                             carVelocity = 0.0f;
+                            drsTimer = 0.0f;
                             carTurnSpeed = INIT_CAR_TURN_SPEED;
                             currentDriveState = DriveState::STATE_DRIVE_IDLE;
                             g_X = static_cast<int>(carPosition.x * SCALEFACTOR);
@@ -1121,6 +1161,7 @@ int main() {
                 switch (currentGameState)
                 {
                     case GameState::STATE_RACING:
+                    {
                         BeginTextureMode(target3DArea);       // Enable drawing to texture
                         ClearBackground(RAYWHITE);
                         BeginMode3D(camera);
@@ -1147,18 +1188,26 @@ int main() {
                         DrawFPS(10, 10);
                         DrawTextureRec(target3DArea.texture, { 0, 0, (float)target3DArea.texture.width, (float)-target3DArea.texture.height }, { 0, 0 }, WHITE);
 
-                        DrawRectangle(1350, 5, 245, 115, Fade(SKYBLUE, 0.45f));
-                        DrawRectangleLines(1350, 5, 245, 115, DARKBLUE);
+                        const bool drsHudActive = drsTimer > 0.0f;
+                        const bool drsHudReady = !drsHudActive && (carVelocity > CAR_STOP_EPSILON);
+                        const char* drsHudText = drsHudActive ? "ACTIVE" : (drsHudReady ? "READY (SPACE)" : "NEED SPEED");
+                        const Color drsHudColor = drsHudActive ? GOLD : (drsHudReady ? LIME : GRAY);
+                        const float displaySpeedKmh = std::abs(carVelocity) * DISPLAY_TOP_SPEED_KMH / DRS_MAX_CAR_SPEED;
+
+                        DrawRectangle(1350, 5, 245, 145, Fade(SKYBLUE, 0.45f));
+                        DrawRectangleLines(1350, 5, 245, 145, DARKBLUE);
 
                         // draw camera player status
                         DrawText("Camera status:", 1360, 15, 12, BLACK);
                         DrawText("Use Alt+C to toggle mouse look", 1360, 30, 12, BLACK);
-                        DrawText("Use Left Shift Key to return to lobby", 1360, 45, 12, BLACK);
+                        DrawText("Space: DRS boost", 1360, 45, 12, BLACK);
+                        DrawText("Left Shift: return to lobby", 1360, 60, 12, BLACK);
                         DrawText(TextFormat("- Projection: %s", (camera.projection == CAMERA_PERSPECTIVE) ? "PERSPECTIVE" :
-                            (camera.projection == CAMERA_ORTHOGRAPHIC) ? "ORTHOGRAPHIC" : "CUSTOM"), 1360, 60, 12, BLACK);
-                        DrawText(TextFormat("- Position: (%06.3f, %06.3f, %06.3f)", camera.position.x, camera.position.y, camera.position.z), 1360, 75, 12, BLACK);
-                        DrawText(TextFormat("- Target: (%06.3f, %06.3f, %06.3f)", camera.target.x, camera.target.y, camera.target.z), 1360, 90, 12, BLACK);
-                        DrawText(TextFormat("- Up: (%06.3f, %06.3f, %06.3f)", camera.up.x, camera.up.y, camera.up.z), 1360, 105, 12, BLACK);
+                            (camera.projection == CAMERA_ORTHOGRAPHIC) ? "ORTHOGRAPHIC" : "CUSTOM"), 1360, 75, 12, BLACK);
+                        DrawText(TextFormat("- Position: (%06.3f, %06.3f, %06.3f)", camera.position.x, camera.position.y, camera.position.z), 1360, 90, 12, BLACK);
+                        DrawText(TextFormat("- Target: (%06.3f, %06.3f, %06.3f)", camera.target.x, camera.target.y, camera.target.z), 1360, 105, 12, BLACK);
+                        DrawText(TextFormat("- DRS: %s", drsHudText), 1360, 120, 12, drsHudColor);
+                        DrawText(TextFormat("- Speed: %03.0f km/h", displaySpeedKmh), 1360, 135, 12, BLACK);
 
                         // TODO: make function
                         drawFadeBackgroundLowerBox();
@@ -1194,6 +1243,7 @@ int main() {
                         }
                         drawEscButton();
                         EndDrawing();
+                    }
                         break;
                     case GameState::STATE_LOBBY:
                         BeginDrawing();
