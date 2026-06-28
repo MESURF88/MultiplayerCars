@@ -1,15 +1,16 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+
 cd "$(dirname "$0")"
-CURRDIR=$(pwd)
-if [ ! -d "$CURRDIR/builddbg" ]; then
-	mkdir builddbg
-fi;
-cd builddbg
-cmake -DCMAKE_BUILD_TYPE=Debug -DDEBUGLOCAL=1 .. && cmake -B .
-make
-cd ..
-cp .env "$CURRDIR"/builddbg
-echo "Complete, Press Any Key to End"
-read -p "$*"
+repo_root="$(cd .. && pwd)"
+source "$repo_root/scripts/linux_env.sh"
 
+generator="Unix Makefiles"
+if command -v ninja >/dev/null 2>&1; then
+    generator="Ninja"
+fi
 
+cmake -S . -B builddbg -G "$generator" -DCMAKE_BUILD_TYPE=Debug -DDEBUGLOCAL=ON
+cmake --build builddbg --parallel
+
+echo "Debug client built at CPPClient/builddbg/carclient"

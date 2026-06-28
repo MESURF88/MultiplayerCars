@@ -23,13 +23,13 @@
 #include <thread>
 #include <mutex>
 #include <string>
+#include <chrono>
 #include <simdjson.h>
 
 // timing benchmark
 //#define TIMING_BENCHMARK
 
 #ifdef TIMING_BENCHMARK
-#include <chrono>
 std::chrono::time_point<std::chrono::high_resolution_clock> start;
 std::chrono::time_point<std::chrono::high_resolution_clock> stop0;
 std::chrono::time_point<std::chrono::high_resolution_clock> stop1;
@@ -127,7 +127,7 @@ public:
     }
 
     void relayBatchHandlerThread() {
-        boost::this_thread::sleep_for(boost::chrono::milliseconds(PERIODIC_POSITION_BATCH_HANDLING_MS));
+        std::this_thread::sleep_for(std::chrono::milliseconds(PERIODIC_POSITION_BATCH_HANDLING_MS));
         g_handleBatch = true;
     }
 };

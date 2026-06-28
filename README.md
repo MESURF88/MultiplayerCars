@@ -7,7 +7,7 @@ contains the Go websocket code to communicates with the clients
 # CPPClient
 
 ```
-contains the c++ code for boost cpr (curlib) for websockets and raylab library to create graphics
+contains the C++ code for Boost.Beast websockets, cpr/libcurl HTTP, and raylib graphics
 ```
 
 # install Go windows
@@ -228,24 +228,45 @@ or use visual studio if (default builds)
 # installing for client linux
 
 ```
-run the setup_dependencies.sh script in CPPClient
+Recommended one-command setup from the repository root:
+
+bash scripts/linux_bootstrap.sh
+
+This script:
+- installs the native Linux build packages through apt
+- uses CMake 4.3.4 locally if the system CMake is older
+- uses Go 1.26.4 locally if the system Go is older
+- generates local TLS files for GoServer/keys and CPPClient/server.crt
+- creates CPPClient/.env if it is missing
+- runs go mod tidy for the server
+- configures the debug C++ client in CPPClient/builddbg
+
+The C++ library versions are now pinned in CPPClient/CMakeLists.txt:
+- raylib 6.0
+- cpr 1.14.0
+- nlohmann/json v3.12.0
+- simdjson v4.6.4
+
+Boost, OpenSSL, curl, X11/OpenGL, and audio dependencies are installed as distro
+packages. CMake links them through package targets instead of relying on
+/usr/local/lib or manually cloned dependency folders.
 ```
 
 # building client linux
 
 ```
-once all the installation is done, or a source file for the client has been modified run either
-build_default_debug_client.sh
-to build an executable in builddbg
+Debug/local server build:
 
-to build release, run
-build_default_debug_client.sh
-to build an executable in build
+bash CPPClient/build_default_debug_client.sh
 
-if need to rebuild the dependencies (curl, cpr, nlohmann/json), the run the clean_dependencies.sh
+Release/online server build:
 
-NOTE: if cmakecache error when running scripts, delete the target (targetdbg for Debug) (target for Release) folder in CPPClient
-and re run build script
+bash CPPClient/build_default_release_client.sh
+
+If CMake cache errors occur after changing generators or compilers, remove the
+corresponding build folder and rerun the build script:
+
+rm -rf CPPClient/builddbg CPPClient/build
 
 ```
 
@@ -253,15 +274,12 @@ and re run build script
 
 ```
 first run server in terminal:
-cd GoServer
-go run .
+bash scripts/linux_run_server.sh
 
-in the root directory, run the debug client from a terminal use the following two commands
-export LD_LIBRARY_PATH=/usr/local/lib
+in another terminal from the repository root, run the debug client:
 ./CPPClient/builddbg/carclient
 
-likewise for release (this will connect to the online server)
-export LD_LIBRARY_PATH=/usr/local/lib
+likewise for release (this will connect to the online server):
 ./CPPClient/build/carclient
 ```
 
@@ -273,6 +291,10 @@ the GoServer Folder needs a directory named keys and containing the following:
 the CPPClient needs the following in its directory:
 - .env
 - server.crt
+
+On Linux, scripts/linux_bootstrap.sh creates these local development files if
+they are missing. CPPClient/.env is intentionally ignored by git because it
+contains login credentials.
 ```
 
 # testing server

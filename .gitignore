@@ -1,3 +1,17 @@
 GoServerbkup
 memory.txt
 examples
+.tools/
+CPPClient/build/
+CPPClient/builddbg/
+CPPClient/target/
+CPPClient/targetdbg/
+CPPClient/curl/
+CPPClient/cpr/
+CPPClient/json/
+CPPClient/nlohmann_json/
+CPPClient/nholmann_json/
+CPPClient/simdjson/
+CPPClient/.env
+CPPClient/server.crt
+GoServer/keys/

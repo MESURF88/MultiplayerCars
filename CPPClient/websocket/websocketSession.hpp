@@ -6,7 +6,6 @@
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/websocket/ssl.hpp>
 #include <boost/asio/strand.hpp>
-#include <boost/thread/thread.hpp>
 #include <cstdlib>
 #include <functional>
 #include <memory>
