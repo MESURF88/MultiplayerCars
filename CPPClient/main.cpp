@@ -89,6 +89,11 @@ static constexpr float CAMERA_TURN_RESISTANCE_MIN_FACTOR = 0.25f;
 static constexpr bool ENABLE_MAP_COLLISION = false;
 static constexpr float GROUND_PLANE_SIZE = 8192.0f;
 static constexpr float GROUND_TEXTURE_REPEATS = 1536.0f;
+static constexpr float CAMERA_FOLLOW_DISTANCE = 6.0f;
+static constexpr float CAMERA_TARGET_HEIGHT = 0.55f;
+static constexpr float CAMERA_MIN_PITCH = 8.0f;
+static constexpr float CAMERA_MAX_PITCH = 55.0f;
+static constexpr float CAMERA_START_PITCH = 20.0f;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
@@ -125,6 +130,33 @@ static float shortestAngleDifference(float fromDegrees, float toDegrees)
 {
     float difference = fmodf((toDegrees - fromDegrees) + 540.0f, 360.0f) - 180.0f;
     return difference;
+}
+
+static float normalizeAngleDegrees(float angle)
+{
+    angle = fmodf(angle, 360.0f);
+    if (angle < 0.0f) angle += 360.0f;
+    return angle;
+}
+
+static Vector2 directionFromAngle(float angleDegrees)
+{
+    const float angleRadians = angleDegrees * DEG2RAD;
+    return { cosf(angleRadians), sinf(angleRadians) };
+}
+
+static void updateChaseCamera(Camera& camera, Vector2 carPosition, float cameraAngle, float cameraPitch)
+{
+    const Vector2 cameraDirection = directionFromAngle(cameraAngle);
+    const float pitchRadians = cameraPitch * DEG2RAD;
+    const float horizontalDistance = CAMERA_FOLLOW_DISTANCE * cosf(pitchRadians);
+
+    camera.target = { carPosition.x, CAMERA_TARGET_HEIGHT, carPosition.y };
+    camera.position = {
+        carPosition.x - cameraDirection.x * horizontalDistance,
+        CAMERA_TARGET_HEIGHT + sinf(pitchRadians) * CAMERA_FOLLOW_DISTANCE,
+        carPosition.y - cameraDirection.y * horizontalDistance
+    };
 }
 
 static char pathSeparator()
@@ -450,21 +482,17 @@ int main() {
             camera.up = { 0.0f, 1.0f, 0.0f };          // Camera up vector (rotation towards target)
             camera.fovy = 45.0f;                                // Camera field-of-view Y
             camera.projection = CAMERA_PERSPECTIVE;             // Camera projection type
-            Vector3 oldCamPos;
-            Vector3 position = { 0.0f, 0.0f, 0.0f };            // Set model position
             float playerRadius = 0.1f;  // Collision radius (player is modelled as a cilinder for collision)
+            Vector2 carPosition = { 0.0f, 0.0f };
             Vector2 playerPos = { 0 };
             Vector3 rotation = { 0 };
             Vector2 mousePositionDelta = { 0 };
-            Vector2 movementDirection = { 0 };
-            Vector3 movement = { 0 };
-            int direction = 0;
-            Vector3 carSize = { 0 };
             float cameraAngle = -90;
+            float cameraPitch = CAMERA_START_PITCH;
             float carAngle = -90;
             float carVelocity = 0.0f;
-            float movementAngle = 0;
             float carTurnSpeed = INIT_CAR_TURN_SPEED;
+            updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
 
             Image imMap = LoadImage(findResourcePath("cubicmap.png").c_str());      // Load cubicmap image (RAM)
             if (imMap.data == nullptr)
@@ -790,27 +818,11 @@ int main() {
                         rotation.x += (IsKeyDown(KEY_RIGHT) - IsKeyDown(KEY_LEFT)) * CAMERA_KEY_LOOK_SPEED * GetFrameTime();
                         rotation.y += (IsKeyDown(KEY_DOWN) - IsKeyDown(KEY_UP)) * CAMERA_KEY_LOOK_SPEED * GetFrameTime();
 
-                        cameraAngle += rotation.x;
-                        if (cameraAngle < 0.0f) cameraAngle += 360.0f;
-                        if (cameraAngle > 360.0f) cameraAngle -= 360.0f;
-
-                        movementAngle = carAngle - cameraAngle;
-                        movementDirection = {
-                            cos(movementAngle * DEG2RAD),
-                            sin(movementAngle * DEG2RAD)
-                        };
-
-                        movement = { 0 };
-                        movement.x = movementDirection.x * carVelocity * frameTime;
-                        movement.y = movementDirection.y * carVelocity * frameTime;
-
-                        direction = (carVelocity > 0.0f) - (carVelocity < 0.0f);
-                        if (direction != 0)
-                        {
-                            prevDriveState = (direction > 0) ? DriveState::STATE_DRIVE_FORWARD : DriveState::STATE_DRIVE_BACKWARD;
-                        }
+                        cameraAngle = normalizeAngleDegrees(cameraAngle + rotation.x);
+                        cameraPitch = std::clamp(cameraPitch + rotation.y, CAMERA_MIN_PITCH, CAMERA_MAX_PITCH);
 
                         const float oldCarAngle = carAngle;
+                        const Vector2 oldCarPosition = carPosition;
                         if (std::abs(carVelocity) > CAR_STOP_EPSILON)
                         {
                             const float steeringDirection = (carVelocity < 0.0f) ? -1.0f : 1.0f;
@@ -819,26 +831,22 @@ int main() {
                             const float resistanceAmount = std::clamp((cameraOffset - CAMERA_TURN_RESISTANCE_START_DEGREES) / resistanceRange, 0.0f, 1.0f);
                             const float cameraTurnFactor = 1.0f - (resistanceAmount * (1.0f - CAMERA_TURN_RESISTANCE_MIN_FACTOR));
                             carAngle += (IsKeyDown(KEY_D) - IsKeyDown(KEY_A)) * carTurnSpeed * cameraTurnFactor * frameTime * steeringDirection;
-                            if (carAngle < 0.0f) carAngle += 360.0f;
-                            if (carAngle > 360.0f) carAngle -= 360.0f;
+                            carAngle = normalizeAngleDegrees(carAngle);
                         }
 
+                        if (carVelocity > 0.0f) prevDriveState = DriveState::STATE_DRIVE_FORWARD;
+                        else if (carVelocity < 0.0f) prevDriveState = DriveState::STATE_DRIVE_BACKWARD;
+
+                        const Vector2 carDirection = directionFromAngle(carAngle);
+                        carPosition.x += carDirection.x * carVelocity * frameTime;
+                        carPosition.y += carDirection.y * carVelocity * frameTime;
+                        playerPos = carPosition;
                         g_Angle = -carAngle + CAR_ANGLE_ADJUSTMENT;
 
-                        oldCamPos = camera.position;    // Store old camera position
-
-                        UpdateCameraPro(&camera,
-                            movement,
-                            rotation,
-                                0.0f);                              // Move to target (zoom) constant
-                        
-                        if ((oldCamPos.x != camera.position.x) || (oldCamPos.z != camera.position.z))
+                        if ((oldCarPosition.x != carPosition.x) || (oldCarPosition.y != carPosition.y) || (oldCarAngle != carAngle))
                         {
                             move = true;
                         }
-
-                        // Check player collision (we simplify to 2D collision detection)
-                        playerPos = { camera.position.x, camera.position.z };
 
                         g_SafetyX = (int)(playerPos.x - mapPosition.x + 0.5f);
                         g_SafetyY = (int)(playerPos.y - mapPosition.z + 0.5f);
@@ -868,7 +876,7 @@ int main() {
                                         mapPosition.x - 0.5f + x * 1.0f, mapPosition.z - 0.5f + y * 1.0f, 1.0f, 1.0f
                                             })))
                                     {
-                                        camera.position = oldCamPos;
+                                        carPosition = oldCarPosition;
                                         carVelocity = 0.0f;
                                         carTurnSpeed = INIT_CAR_TURN_SPEED;
                                         currentDriveState = DriveState::STATE_DRIVE_IDLE;
@@ -881,11 +889,12 @@ int main() {
                         {
                             carAngle = oldCarAngle;
                             g_Angle = -carAngle + CAR_ANGLE_ADJUSTMENT;
-                            playerPos = { camera.position.x, camera.position.z };
+                            playerPos = carPosition;
                             g_X = (playerPos.x) * SCALEFACTOR;
                             g_Y = (playerPos.y) * SCALEFACTOR;
                             move = true;
                         }
+                        updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
                         if (!mouseOnText && (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) && IsKeyPressed(KEY_C))
                         {
                             if (CursorState::STATE_CURSOR_DISABLED == currentCursorState)
@@ -964,6 +973,18 @@ int main() {
                             currentCursorState = CursorState::STATE_CURSOR_ENABLED;
                             mouseLookEnabled = false;
                             skipMouseLookFrame = true;
+                            carPosition = { 0.0f, 0.0f };
+                            playerPos = carPosition;
+                            cameraAngle = -90.0f;
+                            cameraPitch = CAMERA_START_PITCH;
+                            carAngle = -90.0f;
+                            carVelocity = 0.0f;
+                            carTurnSpeed = INIT_CAR_TURN_SPEED;
+                            currentDriveState = DriveState::STATE_DRIVE_IDLE;
+                            g_X = static_cast<int>(carPosition.x * SCALEFACTOR);
+                            g_Y = static_cast<int>(carPosition.y * SCALEFACTOR);
+                            g_Angle = -carAngle + CAR_ANGLE_ADJUSTMENT;
+                            updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
                         }
                         break;
                 }
