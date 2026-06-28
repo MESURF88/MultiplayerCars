@@ -10,220 +10,89 @@ contains the Go websocket code to communicates with the clients
 contains the C++ code for Boost.Beast websockets, cpr/libcurl HTTP, and raylib graphics
 ```
 
-# install Go windows
-
-```
-https://go.dev/doc/install
-```
-
-# install Perl windows
-
-```
-need to install perl x64
-https://strawberryperl.com/
-
-It should place the exe in
-C:/Strawberry/perl/bin/perl.exe
-```
-
 # installing for client windows
 
+Recommended Windows setup from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/windows_setup_system.ps1
 ```
 
-1. need to install openssl for windows
-get chocolatey with the instructions install chocolatey for individual use
-https://chocolatey.org/install
+This checks for the machine-level tools:
+- Visual Studio 2022 Build Tools with C++ tools
+- CMake
+- Ninja (optional, useful for alternate CMake workflows)
+- Git
+- Go
 
-then open an administrator terminal, and run
-choco install openssl
+To install missing tools with `winget`, run:
 
-(choose Y yes to all)
-
-and should see this text:
-The install of openssl was successful.
-Software installed to 'C:\Program Files\OpenSSL-Win64\
-
-2. then install curl for 64-bit
-https://curl.se/windows/
-
-this will be installed in C:\ProgramData\chocolatey\lib\curl\tools
-
-3. install boost following the instructions
-https://github.com/ErisExchange/socket.io-client-cpp/blob/eris-sio_tls_support_non_tls_uris/BOOST.md
-after downloading and extracting run
-bootstrap.bat
-then open a administrator prompt and run this command in the folder:
-.\b2 install --prefix="C:\Program Files\boost" --with-system --with-date_time --with-random --with-thread --with-chrono link=static runtime-link=shared threading=multi
-
-4. install latest x64 cmake
-https://cmake.org/download/
-
-5. Add library paths
-add C:\Program Files\CMake\bin to the user environmental variable PATH
-add C:\Program Files\OpenSSL-Win64\include to the user environmental variable PATH
-
-6. check to see, at least visual studio 2019 and this path to vsvars64.bat
-C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build
-
-7. run setup_release_dependencies.bat as administator then setup_debug_dependencies.bat as administator
-
-for curl
--- Install configuration: "Release"
--- Installing: C:/Program Files (x86)/CURL/lib/libcurl-d_imp.lib
--- Installing: C:/Program Files (x86)/CURL/bin/libcurl-d.dll
--- Installing: C:/Program Files (x86)/CURL/bin/curl.exe
--- Installing: C:/Program Files (x86)/CURL/bin/curl-config
--- Installing: C:/Program Files (x86)/CURL/lib/pkgconfig/libcurl.pc
--- Installing: C:/Program Files (x86)/CURL/include/curl
--- Installing: C:/Program Files (x86)/CURL/include/curl/curl.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/curlver.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/easy.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/header.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/mprintf.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/multi.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/options.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/stdcheaders.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/system.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/typecheck-gcc.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/urlapi.h
--- Installing: C:/Program Files (x86)/CURL/include/curl/websockets.h
--- Installing: C:/Program Files (x86)/CURL/lib/cmake/CURL/CURLTargets.cmake
--- Installing: C:/Program Files (x86)/CURL/lib/cmake/CURL/CURLTargets-debug.cmake
--- Installing: C:/Program Files (x86)/CURL/lib/cmake/CURL/CURLConfigVersion.cmake
--- Installing: C:/Program Files (x86)/CURL/lib/cmake/CURL/CURLConfig.cmake
-
-for cpr
--- Install configuration: "Release"
--- Installing: C:/Program Files (x86)/cpr/lib/zlib.lib
--- Installing: C:/Program Files (x86)/cpr/bin/zlib.dll
--- Installing: C:/Program Files (x86)/cpr/include/zlib.h
--- Installing: C:/Program Files (x86)/cpr/include/zconf.h
--- Installing: C:/Program Files (x86)/cpr/lib/pkgconfig/zlib.pc
--- Installing: C:/Program Files (x86)/cpr/lib/libcurl_imp.lib
--- Installing: C:/Program Files (x86)/cpr/bin/libcurl.dll
--- Installing: C:/Program Files (x86)/cpr/bin/curl-config
--- Installing: C:/Program Files (x86)/cpr/lib/pkgconfig/libcurl.pc
--- Installing: C:/Program Files (x86)/cpr/include/curl
--- Installing: C:/Program Files (x86)/cpr/include/curl/curl.h
--- Installing: C:/Program Files (x86)/cpr/include/curl/curlver.h
--- Installing: C:/Program Files (x86)/cpr/include/curl/easy.h
--- Installing: C:/Program Files (x86)/cpr/include/curl/mprintf.h
--- Installing: C:/Program Files (x86)/cpr/include/curl/multi.h
--- Installing: C:/Program Files (x86)/cpr/include/curl/options.h
--- Installing: C:/Program Files (x86)/cpr/include/curl/stdcheaders.h
--- Installing: C:/Program Files (x86)/cpr/include/curl/system.h
--- Installing: C:/Program Files (x86)/cpr/include/curl/typecheck-gcc.h
--- Installing: C:/Program Files (x86)/cpr/include/curl/urlapi.h
--- Installing: C:/Program Files (x86)/cpr/lib/cmake/CURL/CURLTargets.cmake
--- Installing: C:/Program Files (x86)/cpr/lib/cmake/CURL/CURLTargets-release.cmake
--- Installing: C:/Program Files (x86)/cpr/lib/cmake/CURL/CURLConfigVersion.cmake
--- Installing: C:/Program Files (x86)/cpr/lib/cmake/CURL/CURLConfig.cmake
--- Installing: C:/Program Files (x86)/cpr/lib/cpr.lib
--- Installing: C:/Program Files (x86)/cpr/bin/cpr.dll
--- Installing: C:/Program Files (x86)/cpr/include/cpr
--- Installing: C:/Program Files (x86)/cpr/include/cpr/accept_encoding.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/api.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/async.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/async_wrapper.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/auth.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/bearer.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/body.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/buffer.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/callback.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/cert_info.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/connect_timeout.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/cookies.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/cpr.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/cprtypes.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/curlholder.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/curlmultiholder.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/curl_container.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/error.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/file.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/filesystem.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/http_version.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/interceptor.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/interface.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/limit_rate.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/local_port.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/local_port_range.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/low_speed.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/multipart.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/multiperform.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/parameters.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/payload.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/proxies.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/proxyauth.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/range.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/redirect.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/reserve_size.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/resolve.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/response.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/session.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/singleton.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/ssl_ctx.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/ssl_options.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/status_codes.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/threadpool.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/timeout.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/unix_socket.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/user_agent.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/util.h
--- Installing: C:/Program Files (x86)/cpr/include/cpr/verbose.h
--- Up-to-date: C:/Program Files (x86)/cpr/include/cpr
--- Installing: C:/Program Files (x86)/cpr/include/cpr/cprver.h
-
-8. add curl to the PATH
-add C:\Program Files (x86)\CURL\lib to the user environmental variable PATH
-add C:\Program Files (x86)\CURL\include to the user environmental variable PATH
-
-9. add cpr to the PATH
-add C:\Program Files (x86)\cpr\lib to the user environmental variable PATH
-add C:\Program Files (x86)\cpr\include to the user environmental variable PATH
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/windows_setup_system.ps1 -Install
 ```
+
+Open a new PowerShell terminal after installing tools so PATH updates are visible.
+
+# configuring client windows dependencies
+
+Project-level setup is separate from system setup:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/windows_setup_project.ps1
+```
+
+This script:
+- clones and bootstraps `vcpkg` into ignored `.tools/vcpkg`
+- restores Windows native libraries from `CPPClient/vcpkg.json`
+- installs Boost.System and OpenSSL for the CMake toolchain
+- lets CMake/FetchContent restore code libraries such as raylib, cpr, nlohmann/json, and simdjson
+- creates `CPPClient/.env` if missing
+- copies/generates local TLS files when `openssl` is available
+- configures the `windows-debug-local` CMake preset
+
+The CMake presets are defined in `CMakePresets.json`, so Visual Studio and the VS Code CMake Tools extension can open the repository root and build directly.
 
 # building client windows
 
+Command-line debug/local-server build:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/windows_build_client.ps1
 ```
-once all the installation is done, or a source file for the client has been modified run either
-build_debug_client_nmake.bat
-or
-build_default_debug_client.bat
-to build an executable in nmakebuilddbg or a solution in builddbg respectively
 
-to build release, must first run the setup_release_dependencies.bat before building with the corresponding scripts,
-build_release_client_nmake.bat
-or
-build_default_release_client.bat
-to build an executable in nmakebuild or a solution in build respectively
+Release/online-server build:
 
-if need to rebuild the dependencies (curl, cpr, nlohmann/json), then run the clean_dependencies.bat before the setup_debug_dependencies or setup_release_dependencies script
-
-NOTE: if cmakecache error when running scripts, delete the target (targetdbg for Debug) (target for Release) folder in CPPClient
-and re run build script. This occurs when switching compilers or generators.
-
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/windows_setup_project.ps1 -Configuration Release
+powershell -ExecutionPolicy Bypass -File scripts/windows_build_client.ps1 -Configuration Release
 ```
+
+Visual Studio:
+- Open the repository folder.
+- Select the `windows-debug-local` preset.
+- Build `carclient`.
+
+VS Code:
+- Install the CMake Tools extension.
+- Open the repository folder.
+- Select the `windows-debug-local` configure preset.
+- Build from the CMake sidebar or run `CMake: Build`.
+
+The old `CPPClient/*.bat` scripts remain for reference, but the recommended Windows flow is the PowerShell/CMake preset path.
 
 # running client and server locally windows
 
-```
-first run server in terminal:
-cd .\GoServer
-go run .
+Run the local server:
 
-For the client it must be compiled with the preprocessor definition:
-DEBUG_CLIENT
-this can be done in visual studio Project Settings
-for the nmake build script, it will compile the debug executable with the DEBUG_CLIENT definition automatically.
-
-in the root directory, in another terminal run client (for nmake builds)
-.\CPPClient\nmakebuild\carclient.exe
-(for visual studio builds)
-.\CPPClient\build\carclient.exe
-
-or use visual studio if (default builds)
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/windows_run_server.ps1
 ```
 
+Run the debug client:
+
+```powershell
+.\CPPClient\builddbg\carclient.exe
+```
 
 # installing for client linux
 

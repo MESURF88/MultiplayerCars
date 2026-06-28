@@ -1,0 +1,54 @@
+{
+  "version": 5,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-debug-local",
+      "displayName": "Windows Debug Local Server",
+      "description": "Configure CPPClient for local Go server testing on Windows.",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/CPPClient/builddbg",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "DEBUGLOCAL": "ON",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/.tools/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_MANIFEST_DIR": "${sourceDir}/CPPClient",
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows Release Online Server",
+      "description": "Configure CPPClient for release/online server testing on Windows.",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/CPPClient/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "DEBUGLOCAL": "OFF",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/.tools/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_MANIFEST_DIR": "${sourceDir}/CPPClient",
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-debug-local",
+      "displayName": "Build Windows Debug Local Server",
+      "configurePreset": "windows-debug-local",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Build Windows Release Online Server",
+      "configurePreset": "windows-release",
+      "configuration": "Release"
+    }
+  ]
+}
