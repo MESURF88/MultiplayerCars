@@ -85,6 +85,23 @@ CursorState currentCursorState = CursorState::STATE_CURSOR_ENABLED;
 DriveState currentDriveState = DriveState::STATE_DRIVE_IDLE;
 DriveState prevDriveState = DriveState::STATE_DRIVE_IDLE;
 
+static std::string jsonSnippet(const std::string& jsonText)
+{
+    static constexpr std::size_t MAX_JSON_LOG_CHARS = 500;
+    if (jsonText.size() <= MAX_JSON_LOG_CHARS)
+    {
+        return jsonText;
+    }
+    return jsonText.substr(0, MAX_JSON_LOG_CHARS) + "...";
+}
+
+static void logJsonPayloadError(const std::string& sourceName, const std::string& jsonText, const std::string& details)
+{
+    std::cout << "JSON parse error in " << sourceName << std::endl;
+    std::cout << "  details: " << details << std::endl;
+    std::cout << "  payload: " << jsonSnippet(jsonText) << std::endl;
+}
+
 // Handler classes
 //----------------------------------------------------------------------------------
 
@@ -100,26 +117,37 @@ public:
         simdjson::ondemand::object onDemandObject;
         uint64_t type;
         do {
-            std::string& jsondata = wsUpdatedJsonQueue.front(); // no copy, just a reference
-            auto tmpJson = simdjson::padded_string(jsondata);
+            std::string jsondata = wsUpdatedJsonQueue.front();
             if (jsondata.length() > 0)
             {
-                onDemanddoc = onDemandTypeParser.iterate(tmpJson);
-                auto error = onDemanddoc["Type"].get(type);
-                if (!error)
+                try
                 {
-                    if ((BEventType::BEventPositionUpdateMessage == type) || (BEventType::BEventPositionDebugUpdateMessage == type))
+                    auto tmpJson = simdjson::padded_string(jsondata);
+                    onDemanddoc = onDemandTypeParser.iterate(tmpJson);
+                    auto error = onDemanddoc["Type"].get(type);
+                    if (!error)
                     {
-                        positionJsonQueue.push(std::move(jsondata)); // move the data to the position queue
+                        if ((BEventType::BEventPositionUpdateMessage == type) || (BEventType::BEventPositionDebugUpdateMessage == type))
+                        {
+                            positionJsonQueue.push(std::move(jsondata)); // move the data to the position queue
+                        }
+                        else
+                        {
+                            guiJsonQueue.push(std::move(jsondata)); // move the data to the other general queue
+                        }
                     }
                     else
                     {
-                        guiJsonQueue.push(std::move(jsondata)); // move the data to the other general queue
+                        logJsonPayloadError("websocket relay Type field", jsondata, simdjson::error_message(error));
                     }
                 }
-                else
+                catch (const simdjson::simdjson_error& e)
                 {
-                    std::cout << "relayWorkerThread() out of range: " << std::endl;
+                    logJsonPayloadError("websocket relay payload", jsondata, e.what());
+                }
+                catch (const std::exception& e)
+                {
+                    logJsonPayloadError("websocket relay payload", jsondata, e.what());
                 }
             }
             wsUpdatedJsonQueue.pop();
@@ -422,11 +450,20 @@ int main() {
                         catch (std::out_of_range& e)
                         {
                             std::cout << "positionJsonQueue Update out of range: " << e.what() << std::endl;
+                            std::cout << "  payload: " << jsonSnippet(positionJsonQueue.front()) << std::endl;
+                        }
+                        catch (const simdjson::simdjson_error& e)
+                        {
+                            logJsonPayloadError("positionJsonQueue field read", positionJsonQueue.front(), e.what());
+                        }
+                        catch (const std::exception& e)
+                        {
+                            logJsonPayloadError("positionJsonQueue field read", positionJsonQueue.front(), e.what());
                         }
                     }
                     else
                     {
-                        std::cout << "error parsing json: " << error << std::endl;
+                        logJsonPayloadError("positionJsonQueue", positionJsonQueue.front(), simdjson::error_message(error));
                     }
                     positionJsonQueue.pop();
                 }
@@ -485,11 +522,20 @@ int main() {
                         catch (std::out_of_range& e)
                         {
                             std::cout << "guiJsonQueue Update out of range: " << e.what() << std::endl;
+                            std::cout << "  payload: " << jsonSnippet(guiJsonQueue.front()) << std::endl;
+                        }
+                        catch (const simdjson::simdjson_error& e)
+                        {
+                            logJsonPayloadError("guiJsonQueue field read", guiJsonQueue.front(), e.what());
+                        }
+                        catch (const std::exception& e)
+                        {
+                            logJsonPayloadError("guiJsonQueue field read", guiJsonQueue.front(), e.what());
                         }
                     }
                     else
                     {
-                        std::cout << "error parsing json: " << error << std::endl;
+                        logJsonPayloadError("guiJsonQueue", guiJsonQueue.front(), simdjson::error_message(error));
                     }
                     guiJsonQueue.pop();
                 }

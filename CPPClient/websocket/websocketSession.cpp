@@ -4,6 +4,16 @@
 #include <iostream>
 #include <simdjson.h>
 
+namespace
+{
+    void logOutgoingJsonError(const std::string& sourceName, const char* jsonText, simdjson::error_code error)
+    {
+        std::cout << "JSON minify error in outgoing " << sourceName << std::endl;
+        std::cout << "  details: " << simdjson::error_message(error) << std::endl;
+        std::cout << "  payload: " << jsonText << std::endl;
+    }
+}
+
 WebsocketSession::WebsocketSession(net::io_context& ioc, ssl::context& ctx, std::function<void(const std::string&)> readcb, std::string colorStr):
 m_isConnected(false),
 m_resolver(net::make_strand(ioc)),    // These objects perform our I/O
@@ -45,6 +55,11 @@ bool WebsocketSession::sendPosition(int X, int Y, float Angle)
         std::unique_ptr<char[]> posBuffer{ new char[posBufferLength] };
         size_t new_length{};
         auto error = simdjson::minify(m_posRawJson, posBufferLength, posBuffer.get(), new_length);
+        if (error)
+        {
+            logOutgoingJsonError("position message", m_posRawJson, error);
+            return succ;
+        }
         asyncWriteQueue.push(std::string(posBuffer.get(), new_length));
     }
     return succ;
@@ -63,6 +78,11 @@ bool WebsocketSession::sendColorUpdate(std::string hexValueColor)
         std::unique_ptr<char[]> colorBuffer{ new char[colorBufferLength] };
         size_t new_length{};
         auto error = simdjson::minify(m_colorRawJson, colorBufferLength, colorBuffer.get(), new_length);
+        if (error)
+        {
+            logOutgoingJsonError("color message", m_colorRawJson, error);
+            return succ;
+        }
         beast::error_code ec;
         m_wss.write(net::buffer(std::string(colorBuffer.get(), new_length)), ec);
         if (ec)
@@ -90,6 +110,11 @@ bool WebsocketSession::sendTextMessage(std::string toUUID, std::string colorStr,
         std::unique_ptr<char[]> textMsgBuffer{ new char[textMsgBufferLength] };
         size_t new_length{};
         auto error = simdjson::minify(m_textMsgRawJson, textMsgBufferLength, textMsgBuffer.get(), new_length);
+        if (error)
+        {
+            logOutgoingJsonError("text message", m_textMsgRawJson, error);
+            return succ;
+        }
         beast::error_code ec;
         m_wss.write(net::buffer(std::string(textMsgBuffer.get(), new_length)), ec);
         if (ec)
