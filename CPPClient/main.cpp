@@ -25,6 +25,8 @@
 #include <string>
 #include <chrono>
 #include <vector>
+#include <algorithm>
+#include <cmath>
 #include <simdjson.h>
 
 // timing benchmark
@@ -65,7 +67,10 @@ enum class DriveState {
 // Globals
 static constexpr float SCALEFACTOR = 1000.0f;
 static constexpr float CAR_ANGLE_ADJUSTMENT = 90.0f;
-static constexpr int CAMERA_MOUSE_MOVE_SENSITIVITY = 4.5f;
+static constexpr float CAMERA_MOUSE_MOVE_SENSITIVITY = 4.5f;
+static constexpr float CAMERA_KEY_LOOK_SPEED = 90.0f;
+static constexpr float CAMERA_MAX_MOUSE_DELTA = 80.0f;
+static constexpr float CAMERA_MOUSE_DEADZONE = 0.05f;
 static constexpr float INIT_CAR_SPEED = 2.0f;
 static constexpr float INIT_CAR_TURN_SPEED = 80.0f;
 static constexpr float THRESHOLD_CAR_SPEED1 = 4.0f;
@@ -394,6 +399,8 @@ int main() {
             bool move = false;
             bool text = false;
             bool mouseOnText = false;
+            bool mouseLookEnabled = false;
+            bool skipMouseLookFrame = true;
             char textmessage[MAX_INPUT_CHARS + 1] = "\0";      // NOTE: One extra space required for null terminator char '\0'
             int framesCounter = 0;
             int letterCount = 0;
@@ -701,9 +708,31 @@ int main() {
                             }
                         }
 
+                        rotation = { 0 };
                         mousePositionDelta = GetMouseDelta();
-                        rotation.x = mousePositionDelta.x * CAMERA_MOUSE_MOVE_SENSITIVITY * GetFrameTime();
-                        rotation.y = mousePositionDelta.y * CAMERA_MOUSE_MOVE_SENSITIVITY * GetFrameTime();
+                        if (mouseLookEnabled && (CursorState::STATE_CURSOR_DISABLED == currentCursorState))
+                        {
+                            if (skipMouseLookFrame)
+                            {
+                                mousePositionDelta = { 0.0f, 0.0f };
+                                skipMouseLookFrame = false;
+                            }
+
+                            mousePositionDelta.x = std::clamp(mousePositionDelta.x, -CAMERA_MAX_MOUSE_DELTA, CAMERA_MAX_MOUSE_DELTA);
+                            mousePositionDelta.y = std::clamp(mousePositionDelta.y, -CAMERA_MAX_MOUSE_DELTA, CAMERA_MAX_MOUSE_DELTA);
+
+                            if (std::abs(mousePositionDelta.x) > CAMERA_MOUSE_DEADZONE)
+                            {
+                                rotation.x += mousePositionDelta.x * CAMERA_MOUSE_MOVE_SENSITIVITY * GetFrameTime();
+                            }
+                            if (std::abs(mousePositionDelta.y) > CAMERA_MOUSE_DEADZONE)
+                            {
+                                rotation.y += mousePositionDelta.y * CAMERA_MOUSE_MOVE_SENSITIVITY * GetFrameTime();
+                            }
+                        }
+
+                        rotation.x += (IsKeyDown(KEY_RIGHT) - IsKeyDown(KEY_LEFT)) * CAMERA_KEY_LOOK_SPEED * GetFrameTime();
+                        rotation.y += (IsKeyDown(KEY_DOWN) - IsKeyDown(KEY_UP)) * CAMERA_KEY_LOOK_SPEED * GetFrameTime();
 
                         cameraAngle += rotation.x;
                         if (cameraAngle < 0.0f) cameraAngle += 360.0f;
@@ -811,17 +840,20 @@ int main() {
                                 }
                             }
                         }
-                        if (windowIsKeyOnlyPressed(KEY_C))
+                        if (!mouseOnText && (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) && IsKeyPressed(KEY_C))
                         {
                             if (CursorState::STATE_CURSOR_DISABLED == currentCursorState)
                             {
                                 EnableCursor();
                                 currentCursorState = CursorState::STATE_CURSOR_ENABLED;
+                                mouseLookEnabled = false;
                             }
                             else
                             {
                                 DisableCursor();
                                 currentCursorState = CursorState::STATE_CURSOR_DISABLED;
+                                mouseLookEnabled = true;
+                                skipMouseLookFrame = true;
                             }
                         }
                         if (!mouseOnText && windowIsKeyOnlyPressed(KEY_LEFT_SHIFT))
@@ -829,6 +861,8 @@ int main() {
                             g_in_state_transition = true;
                             currentGameState = GameState::STATE_LOBBY;
                             currentCursorState = CursorState::STATE_CURSOR_ENABLED;
+                            mouseLookEnabled = false;
+                            skipMouseLookFrame = true;
                             g_X = 0;
                             g_Y = 125;
                         }
@@ -880,7 +914,9 @@ int main() {
                         {
                             g_in_state_transition = true;
                             currentGameState = GameState::STATE_RACING;
-                            currentCursorState = CursorState::STATE_CURSOR_DISABLED;
+                            currentCursorState = CursorState::STATE_CURSOR_ENABLED;
+                            mouseLookEnabled = false;
+                            skipMouseLookFrame = true;
                         }
                         break;
                 }
@@ -1046,7 +1082,7 @@ int main() {
 
                         // draw camera player status
                         DrawText("Camera status:", 1360, 15, 12, BLACK);
-                        DrawText("Use C Key to toggle cursor", 1360, 30, 12, BLACK);
+                        DrawText("Use Alt+C to toggle mouse look", 1360, 30, 12, BLACK);
                         DrawText("Use Left Shift Key to return to lobby", 1360, 45, 12, BLACK);
                         DrawText(TextFormat("- Projection: %s", (camera.projection == CAMERA_PERSPECTIVE) ? "PERSPECTIVE" :
                             (camera.projection == CAMERA_ORTHOGRAPHIC) ? "ORTHOGRAPHIC" : "CUSTOM"), 1360, 60, 12, BLACK);
