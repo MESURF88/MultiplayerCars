@@ -25,7 +25,7 @@ static constexpr int racePortalY = screenHeight - racePortalBoxHeight - 600;
 
 static const raylib::Color defaultMainTextColor = raylib::Color::Gray();
 // the one and only window
-raylib::Window window(screenWidth, screenHeight, "car sim game alpha v" + std::to_string(VERSION_NUM));
+raylib::Window window(screenWidth, screenHeight, std::string("car sim game alpha v") + VERSION_LABEL);
 
 static const Rectangle chatSendBoxRect = { 0, screenHeight - menuPanelHeight - chatSendBoxHeight, chatSendBoxWidth, chatSendBoxHeight };
 static const Rectangle chatSendButtonRect = { chatSendBoxWidth-1, screenHeight - menuPanelHeight - chatSendBoxHeight, 100, chatSendBoxHeight };

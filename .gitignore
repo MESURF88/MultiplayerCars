@@ -6,6 +6,7 @@ CPPClient/build/
 CPPClient/builddbg/
 CPPClient/target/
 CPPClient/targetdbg/
+CPPClient/vcpkg_installed/
 CPPClient/curl/
 CPPClient/cpr/
 CPPClient/json/

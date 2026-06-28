@@ -1,6 +1,6 @@
 #ifndef _VERSION_
 #define _VERSION_
 
-static constexpr double VERSION_NUM = 0.4;
+static constexpr const char* VERSION_LABEL = "0.5";
 
 #endif // _VERSION_
