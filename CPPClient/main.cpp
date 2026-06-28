@@ -176,6 +176,49 @@ static void updateChaseCamera(Camera& camera, Vector2 carPosition, float cameraA
     };
 }
 
+static bool colorMatches(Color actual, Color expected, int tolerance)
+{
+    return (std::abs(static_cast<int>(actual.r) - static_cast<int>(expected.r)) <= tolerance) &&
+        (std::abs(static_cast<int>(actual.g) - static_cast<int>(expected.g)) <= tolerance) &&
+        (std::abs(static_cast<int>(actual.b) - static_cast<int>(expected.b)) <= tolerance);
+}
+
+static int findCarPaintMaterialIndex(const Model& model)
+{
+    const Color originalPaintBlue = { 105, 122, 216, 255 };
+    for (int i = 0; i < model.materialCount; ++i)
+    {
+        const Color diffuseColor = model.materials[i].maps[MATERIAL_MAP_DIFFUSE].color;
+        if (colorMatches(diffuseColor, originalPaintBlue, 4))
+        {
+            return i;
+        }
+    }
+
+    return 0;
+}
+
+static Color carPaintColorFromHexString(const std::string& colorHex)
+{
+    return GetColor(colorHexToString(colorHex));
+}
+
+static void applyCarPaintMaterial(Model& model, int paintMaterialIndex, const std::string& colorHex)
+{
+    if ((paintMaterialIndex < 0) || (paintMaterialIndex >= model.materialCount))
+    {
+        return;
+    }
+
+    model.materials[paintMaterialIndex].maps[MATERIAL_MAP_DIFFUSE].color = carPaintColorFromHexString(colorHex);
+}
+
+static void drawCarModelWithPaint(Model& model, int paintMaterialIndex, const std::string& colorHex, Vector3 position, float angle)
+{
+    applyCarPaintMaterial(model, paintMaterialIndex, colorHex);
+    DrawModelEx(model, position, { 0.0f, 1.0f, 0.0f }, angle, { 0.5f, 0.5f, 0.5f }, WHITE);
+}
+
 static char pathSeparator()
 {
 #if defined(WIN32)
@@ -579,6 +622,7 @@ int main() {
             skyboxModel.materials[0].maps[MATERIAL_MAP_CUBEMAP].texture = skyboxCubemap;
 
             Model carModel = loadModelResource("raceFuture.obj");
+            int carPaintMaterialIndex = findCarPaintMaterialIndex(carModel);
 
             Vector3 mapPosition = { -16.0f, 0.0f, -8.0f };  // Set model position
             //----------------------------------------------------------------------------------
@@ -1192,9 +1236,9 @@ int main() {
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
                             DrawCylinder({ static_cast<float>(coords->second.m_coords.m_X)/SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y)/ SCALEFACTOR }, 0.15f, 0.15f, 0.3f, 5, GetColor(colorHexToString(coords->second.m_color)));
-                            DrawModelEx(carModel, { static_cast<float>(coords->second.m_coords.m_X) / SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y) / SCALEFACTOR }, { 0.0f, 1.0f, 0.0f }, coords->second.m_coords.m_Angle, { 0.5f, 0.5f, 0.5f }, WHITE);
+                            drawCarModelWithPaint(carModel, carPaintMaterialIndex, coords->second.m_color, { static_cast<float>(coords->second.m_coords.m_X) / SCALEFACTOR, 0.0f, static_cast<float>(coords->second.m_coords.m_Y) / SCALEFACTOR }, coords->second.m_coords.m_Angle);
                         }
-                        DrawModelEx(carModel, { playerPos.x, -0.1f, playerPos.y }, { 0.0f, 1.0f, 0.0f }, g_Angle, { 0.5f, 0.5f, 0.5f }, WHITE);
+                        drawCarModelWithPaint(carModel, carPaintMaterialIndex, getCarColorString(), { playerPos.x, -0.1f, playerPos.y }, g_Angle);
 
                         EndMode3D();
                         EndTextureMode();
