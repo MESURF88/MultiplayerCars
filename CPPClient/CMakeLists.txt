@@ -131,6 +131,7 @@ set(inc
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/threadSafeQueue.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/carClass.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/courseMap.hpp
 )
 
 set(source
@@ -139,6 +140,7 @@ set(source
     ${CMAKE_CURRENT_SOURCE_DIR}/websocket/websocketSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/windowContext.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/carClass.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/courseMap.cpp
     main.cpp
 )
 

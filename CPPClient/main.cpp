@@ -17,6 +17,7 @@
 #include "event.hpp"
 #include "windowContext.hpp"
 #include "carClass.hpp"
+#include "courseMap.hpp"
 #include <functional>
 #include <iostream>
 #include <fstream>
@@ -93,10 +94,8 @@ static constexpr float CAMERA_TURN_RESISTANCE_SPEED_START = 6.5f;
 static constexpr float CAMERA_TURN_RESISTANCE_START_DEGREES = 20.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_FULL_DEGREES = 120.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_MIN_FACTOR = 0.25f;
-static constexpr bool ENABLE_MAP_BOUNDARY = true;
+static constexpr bool ENABLE_COURSE_WALLS = true;
 static constexpr bool ENABLE_MAP_COLLISION = false;
-static constexpr float BOUNDARY_WALL_HEIGHT = 0.45f;
-static constexpr float BOUNDARY_WALL_THICKNESS = 0.25f;
 static constexpr float GROUND_PLANE_SIZE = 8192.0f;
 static constexpr float GROUND_TEXTURE_REPEATS = 1536.0f;
 static constexpr float CAMERA_FOLLOW_DISTANCE = 6.0f;
@@ -501,16 +500,18 @@ int main() {
             camera.fovy = 45.0f;                                // Camera field-of-view Y
             camera.projection = CAMERA_PERSPECTIVE;             // Camera projection type
             float playerRadius = 0.1f;  // Collision radius (player is modelled as a cilinder for collision)
-            Vector2 carPosition = { 0.0f, 0.0f };
+            CourseMap raceCourse = createSimpleCircuitCourse();
+            Vector2 carPosition = raceCourse.startPosition;
             Vector2 playerPos = { 0 };
             Vector3 rotation = { 0 };
             Vector2 mousePositionDelta = { 0 };
-            float cameraAngle = -90;
+            float cameraAngle = raceCourse.startAngle;
             float cameraPitch = CAMERA_START_PITCH;
-            float carAngle = -90;
+            float carAngle = raceCourse.startAngle;
             float carVelocity = 0.0f;
             float carTurnSpeed = INIT_CAR_TURN_SPEED;
             float drsTimer = 0.0f;
+            playerPos = carPosition;
             updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
 
             Image imMap = LoadImage(findResourcePath("cubicmap.png").c_str());      // Load cubicmap image (RAM)
@@ -903,27 +904,14 @@ int main() {
                         g_Y = (playerPos.y)* SCALEFACTOR;
 
                         bool collisionDetected = false;
-                        if (ENABLE_MAP_BOUNDARY)
+                        if (ENABLE_COURSE_WALLS && courseCollidesWithWalls(raceCourse, playerPos, playerRadius))
                         {
-                            const float mapMinX = mapPosition.x - 0.5f;
-                            const float mapMaxX = mapMinX + static_cast<float>(cubicmap.width);
-                            const float mapMinZ = mapPosition.z - 0.5f;
-                            const float mapMaxZ = mapMinZ + static_cast<float>(cubicmap.height);
-                            const bool outsideMapBounds =
-                                (playerPos.x < mapMinX + playerRadius) ||
-                                (playerPos.x > mapMaxX - playerRadius) ||
-                                (playerPos.y < mapMinZ + playerRadius) ||
-                                (playerPos.y > mapMaxZ - playerRadius);
-
-                            if (outsideMapBounds)
-                            {
-                                carPosition = oldCarPosition;
-                                carVelocity = 0.0f;
-                                drsTimer = 0.0f;
-                                carTurnSpeed = INIT_CAR_TURN_SPEED;
-                                currentDriveState = DriveState::STATE_DRIVE_IDLE;
-                                collisionDetected = true;
-                            }
+                            carPosition = oldCarPosition;
+                            carVelocity = 0.0f;
+                            drsTimer = 0.0f;
+                            carTurnSpeed = INIT_CAR_TURN_SPEED;
+                            currentDriveState = DriveState::STATE_DRIVE_IDLE;
+                            collisionDetected = true;
                         }
                         if (ENABLE_MAP_COLLISION)
                         {
@@ -1037,11 +1025,11 @@ int main() {
                             currentCursorState = CursorState::STATE_CURSOR_ENABLED;
                             mouseLookEnabled = false;
                             skipMouseLookFrame = true;
-                            carPosition = { 0.0f, 0.0f };
+                            carPosition = raceCourse.startPosition;
                             playerPos = carPosition;
-                            cameraAngle = -90.0f;
+                            cameraAngle = raceCourse.startAngle;
                             cameraPitch = CAMERA_START_PITCH;
-                            carAngle = -90.0f;
+                            carAngle = raceCourse.startAngle;
                             carVelocity = 0.0f;
                             drsTimer = 0.0f;
                             carTurnSpeed = INIT_CAR_TURN_SPEED;
@@ -1197,24 +1185,9 @@ int main() {
                         rlEnableDepthMask();
                         DrawModel(groundModel, { 0.0f, -0.03f, 0.0f }, 1.0f, WHITE);
                         // DrawModel(model, mapPosition, 1.0f, WHITE);                  // Draw collision map
-                        if (ENABLE_MAP_BOUNDARY)
+                        if (ENABLE_COURSE_WALLS)
                         {
-                            const float mapMinX = mapPosition.x - 0.5f;
-                            const float mapMaxX = mapMinX + static_cast<float>(cubicmap.width);
-                            const float mapMinZ = mapPosition.z - 0.5f;
-                            const float mapMaxZ = mapMinZ + static_cast<float>(cubicmap.height);
-                            const float mapCenterX = (mapMinX + mapMaxX) * 0.5f;
-                            const float mapCenterZ = (mapMinZ + mapMaxZ) * 0.5f;
-                            const float mapWidth = mapMaxX - mapMinX;
-                            const float mapDepth = mapMaxZ - mapMinZ;
-                            const float wallY = (BOUNDARY_WALL_HEIGHT * 0.5f) - 0.03f;
-                            const Vector3 horizontalWallSize = { mapWidth + BOUNDARY_WALL_THICKNESS * 2.0f, BOUNDARY_WALL_HEIGHT, BOUNDARY_WALL_THICKNESS };
-                            const Vector3 verticalWallSize = { BOUNDARY_WALL_THICKNESS, BOUNDARY_WALL_HEIGHT, mapDepth + BOUNDARY_WALL_THICKNESS * 2.0f };
-
-                            DrawCubeV({ mapCenterX, wallY, mapMinZ }, horizontalWallSize, GRAY);
-                            DrawCubeV({ mapCenterX, wallY, mapMaxZ }, horizontalWallSize, GRAY);
-                            DrawCubeV({ mapMinX, wallY, mapCenterZ }, verticalWallSize, GRAY);
-                            DrawCubeV({ mapMaxX, wallY, mapCenterZ }, verticalWallSize, GRAY);
+                            drawCourseWalls(raceCourse);
                         }
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
