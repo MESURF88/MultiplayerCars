@@ -79,6 +79,7 @@ static constexpr float THRESHOLD_CAR_SPEED1 = 4.0f;
 static constexpr float THRESHOLD_CAR_SPEED2 = 7.0f;
 static constexpr float MAX_CAR_SPEED = 8.0f;
 static constexpr float DRS_MAX_CAR_SPEED = 15.0f;
+static constexpr float DRS_MIN_READY_SPEED = 7.0f;
 static constexpr float DISPLAY_TOP_SPEED_KMH = 200.0f;
 static constexpr float DRS_DURATION_SECONDS = 0.45f;
 static constexpr float DRS_ACCELERATION_MULTIPLIER = 1.35f;
@@ -889,7 +890,7 @@ int main() {
                             racePlayerCount = std::max(racePlayerCount, static_cast<int>(gui_externalplayers.size()) + 1);
                             session->sendRaceReadyUpdate(raceCourse.courseId, true, true, raceCourse.lapCount);
                         }
-                        if (raceDrivingEnabled && (carVelocity > CAR_STOP_EPSILON) && IsKeyPressed(KEY_SPACE))
+                        if (raceDrivingEnabled && (carVelocity >= DRS_MIN_READY_SPEED) && IsKeyPressed(KEY_SPACE))
                         {
                             drsTimer = DRS_DURATION_SECONDS;
                         }
@@ -1344,7 +1345,7 @@ int main() {
                         DrawTextureRec(target3DArea.texture, { 0, 0, (float)target3DArea.texture.width, (float)-target3DArea.texture.height }, { 0, 0 }, WHITE);
 
                         const bool drsHudActive = drsTimer > 0.0f;
-                        const bool drsHudReady = !drsHudActive && (carVelocity > CAR_STOP_EPSILON);
+                        const bool drsHudReady = !drsHudActive && (carVelocity >= DRS_MIN_READY_SPEED);
                         const char* drsHudText = drsHudActive ? "ACTIVE" : (drsHudReady ? "READY (SPACE)" : "NEED SPEED");
                         const Color drsHudColor = drsHudActive ? GOLD : (drsHudReady ? LIME : GRAY);
                         const float displaySpeedKmh = std::abs(carVelocity) * DISPLAY_TOP_SPEED_KMH / DRS_MAX_CAR_SPEED;
