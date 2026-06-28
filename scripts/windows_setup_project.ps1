@@ -28,13 +28,13 @@ function Ensure-Vcpkg {
 
     if (-not (Test-Path $vcpkgDir)) {
         Write-Host "Cloning vcpkg into $vcpkgDir"
-        git clone https://github.com/microsoft/vcpkg.git $vcpkgDir
+        git clone https://github.com/microsoft/vcpkg.git $vcpkgDir | Out-Host
     }
 
     $vcpkgExe = Join-Path $vcpkgDir "vcpkg.exe"
     if (-not (Test-Path $vcpkgExe)) {
         Write-Host "Bootstrapping vcpkg"
-        & (Join-Path $vcpkgDir "bootstrap-vcpkg.bat") -disableMetrics
+        & (Join-Path $vcpkgDir "bootstrap-vcpkg.bat") -disableMetrics | Out-Host
     }
 
     return $vcpkgExe
