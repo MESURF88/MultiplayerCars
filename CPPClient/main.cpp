@@ -76,7 +76,16 @@ static constexpr float INIT_CAR_TURN_SPEED = 80.0f;
 static constexpr float THRESHOLD_CAR_SPEED1 = 4.0f;
 static constexpr float THRESHOLD_CAR_SPEED2 = 7.0f;
 static constexpr float MAX_CAR_SPEED = 8.0f;
+static constexpr float MAX_REVERSE_CAR_SPEED = 4.0f;
+static constexpr float CAR_FORWARD_ACCELERATION = 5.5f;
+static constexpr float CAR_REVERSE_ACCELERATION = 3.5f;
+static constexpr float CAR_BRAKE_DECELERATION = 10.0f;
+static constexpr float CAR_COAST_DECELERATION = 3.0f;
+static constexpr float CAR_STOP_EPSILON = 0.05f;
 static constexpr float MIN_CAR_TURN_SPEED = 50.0f;
+static constexpr float CAMERA_TURN_RESISTANCE_START_DEGREES = 20.0f;
+static constexpr float CAMERA_TURN_RESISTANCE_FULL_DEGREES = 120.0f;
+static constexpr float CAMERA_TURN_RESISTANCE_MIN_FACTOR = 0.25f;
 static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
@@ -107,6 +116,12 @@ static void logJsonPayloadError(const std::string& sourceName, const std::string
     std::cout << "JSON parse error in " << sourceName << std::endl;
     std::cout << "  details: " << details << std::endl;
     std::cout << "  payload: " << jsonSnippet(jsonText) << std::endl;
+}
+
+static float shortestAngleDifference(float fromDegrees, float toDegrees)
+{
+    float difference = fmodf((toDegrees - fromDegrees) + 540.0f, 360.0f) - 180.0f;
+    return difference;
 }
 
 static char pathSeparator()
@@ -444,8 +459,8 @@ int main() {
             Vector3 carSize = { 0 };
             float cameraAngle = -90;
             float carAngle = -90;
+            float carVelocity = 0.0f;
             float movementAngle = 0;
-            float carDriveSpeed = INIT_CAR_SPEED;
             float carTurnSpeed = INIT_CAR_TURN_SPEED;
 
             Image imMap = LoadImage(findResourcePath("cubicmap.png").c_str());      // Load cubicmap image (RAM)
@@ -667,46 +682,59 @@ int main() {
                 switch (currentGameState)
                 {
                     case GameState::STATE_RACING:
-                        if (DriveState::STATE_DRIVE_IDLE == currentDriveState)
+                    {
+                        const float frameTime = GetFrameTime();
+                        const int throttleInput = IsKeyDown(KEY_W) - IsKeyDown(KEY_S);
+
+                        if (throttleInput > 0)
                         {
-                            if (INIT_CAR_SPEED < carDriveSpeed)
+                            currentDriveState = DriveState::STATE_DRIVE_FORWARD;
+                            if (carVelocity < 0.0f)
                             {
-                                carDriveSpeed -= GetFrameTime() * 8.0f;
+                                carVelocity += CAR_BRAKE_DECELERATION * frameTime;
+                                if (carVelocity > 0.0f) carVelocity = 0.0f;
                             }
-                            if (INIT_CAR_TURN_SPEED > carTurnSpeed)
+                            else
                             {
-                                carTurnSpeed += GetFrameTime() * 8.0f;
+                                carVelocity += CAR_FORWARD_ACCELERATION * frameTime;
+                            }
+                        }
+                        else if (throttleInput < 0)
+                        {
+                            currentDriveState = DriveState::STATE_DRIVE_BACKWARD;
+                            if (carVelocity > 0.0f)
+                            {
+                                carVelocity -= CAR_BRAKE_DECELERATION * frameTime;
+                                if (carVelocity < 0.0f) carVelocity = 0.0f;
+                            }
+                            else
+                            {
+                                carVelocity -= CAR_REVERSE_ACCELERATION * frameTime;
                             }
                         }
                         else
                         {
-                            if (MAX_CAR_SPEED > carDriveSpeed)
+                            currentDriveState = DriveState::STATE_DRIVE_IDLE;
+                            if (carVelocity > 0.0f)
                             {
-                                if (THRESHOLD_CAR_SPEED1 < carDriveSpeed)
-                                {
-                                    carDriveSpeed += GetFrameTime() * 6.0f;
-                                }
-                                else if (THRESHOLD_CAR_SPEED2 < carDriveSpeed)
-                                {
-                                    carDriveSpeed += GetFrameTime() * 5.0f;
-                                }
-                                else
-                                {
-                                    carDriveSpeed += GetFrameTime() * 4.0f;
-                                }
+                                carVelocity -= CAR_COAST_DECELERATION * frameTime;
+                                if (carVelocity < 0.0f) carVelocity = 0.0f;
                             }
-                            if (MIN_CAR_TURN_SPEED < carTurnSpeed)
+                            else if (carVelocity < 0.0f)
                             {
-                                if (THRESHOLD_CAR_SPEED2 < carDriveSpeed)
-                                {
-                                    carTurnSpeed -= GetFrameTime() * 1.0f;
-                                }
-                                else
-                                {
-                                    carTurnSpeed -= GetFrameTime() * 4.0f;
-                                }
+                                carVelocity += CAR_COAST_DECELERATION * frameTime;
+                                if (carVelocity > 0.0f) carVelocity = 0.0f;
                             }
                         }
+
+                        carVelocity = std::clamp(carVelocity, -MAX_REVERSE_CAR_SPEED, MAX_CAR_SPEED);
+                        if (std::abs(carVelocity) < CAR_STOP_EPSILON)
+                        {
+                            carVelocity = 0.0f;
+                        }
+
+                        const float absVelocity = std::abs(carVelocity);
+                        carTurnSpeed = std::clamp(INIT_CAR_TURN_SPEED - (absVelocity * 4.0f), MIN_CAR_TURN_SPEED, INIT_CAR_TURN_SPEED);
 
                         rotation = { 0 };
                         mousePositionDelta = GetMouseDelta();
@@ -745,51 +773,27 @@ int main() {
                         };
 
                         movement = { 0 };
-                        direction = IsKeyDown(KEY_W) - IsKeyDown(KEY_S);
+                        movement.x = movementDirection.x * carVelocity * frameTime;
+                        movement.y = movementDirection.y * carVelocity * frameTime;
 
-                        if (direction) {
-                            if (direction > 0)
-                            {
-                                currentDriveState = DriveState::STATE_DRIVE_FORWARD;
-                            }
-                            else
-                            {
-                                currentDriveState = DriveState::STATE_DRIVE_BACKWARD;
-                            }
-                            prevDriveState = currentDriveState;
-                            float directionSpeed = direction * carDriveSpeed * GetFrameTime();
-                            movement.x = movementDirection.x * directionSpeed;
-                            movement.y = movementDirection.y * directionSpeed;
-                        }
-                        else
+                        direction = (carVelocity > 0.0f) - (carVelocity < 0.0f);
+                        if (direction != 0)
                         {
-                            currentDriveState = DriveState::STATE_DRIVE_IDLE;
-                            if (INIT_CAR_SPEED < carDriveSpeed)
-                            {
-                                if (DriveState::STATE_DRIVE_FORWARD == prevDriveState)
-                                {
-                                    direction = 1;
-                                }
-                                else
-                                {
-                                    direction = -1;
-                                }
-                                float directionSpeed = direction * carDriveSpeed * GetFrameTime();
-                                movement.x = movementDirection.x * directionSpeed;
-                                movement.y = movementDirection.y * directionSpeed;
-                            }
-                            else
-                            {
-                                if (carDriveSpeed != INIT_CAR_SPEED) carDriveSpeed = INIT_CAR_SPEED;
-                                if (carTurnSpeed != INIT_CAR_TURN_SPEED) carTurnSpeed = INIT_CAR_TURN_SPEED;
-                            }
+                            prevDriveState = (direction > 0) ? DriveState::STATE_DRIVE_FORWARD : DriveState::STATE_DRIVE_BACKWARD;
                         }
 
-
-
-                        carAngle += (IsKeyDown(KEY_D) - IsKeyDown(KEY_A)) * carTurnSpeed * GetFrameTime() * ((direction >= 0) ? 1: -1);
-                        if (carAngle < 0.0f) carAngle += 360.0f;
-                        if (carAngle > 360.0f) carAngle -= 360.0f;
+                        const float oldCarAngle = carAngle;
+                        if (std::abs(carVelocity) > CAR_STOP_EPSILON)
+                        {
+                            const float steeringDirection = (carVelocity < 0.0f) ? -1.0f : 1.0f;
+                            const float cameraOffset = std::abs(shortestAngleDifference(carAngle, cameraAngle));
+                            const float resistanceRange = CAMERA_TURN_RESISTANCE_FULL_DEGREES - CAMERA_TURN_RESISTANCE_START_DEGREES;
+                            const float resistanceAmount = std::clamp((cameraOffset - CAMERA_TURN_RESISTANCE_START_DEGREES) / resistanceRange, 0.0f, 1.0f);
+                            const float cameraTurnFactor = 1.0f - (resistanceAmount * (1.0f - CAMERA_TURN_RESISTANCE_MIN_FACTOR));
+                            carAngle += (IsKeyDown(KEY_D) - IsKeyDown(KEY_A)) * carTurnSpeed * cameraTurnFactor * frameTime * steeringDirection;
+                            if (carAngle < 0.0f) carAngle += 360.0f;
+                            if (carAngle > 360.0f) carAngle -= 360.0f;
+                        }
 
                         g_Angle = -carAngle + CAR_ANGLE_ADJUSTMENT;
 
@@ -823,6 +827,7 @@ int main() {
 
                         // Check map collisions using image data and player position
                         // TODO: Improvement: Just check player surrounding cells for collision
+                        bool collisionDetected = false;
                         for (int y = 0; y < cubicmap.height; y++)
                         {
                             for (int x = 0; x < cubicmap.width; x++)
@@ -835,10 +840,21 @@ int main() {
                                 {
                                     // Collision detected, reset camera position
                                     camera.position = oldCamPos;
-                                    if (carDriveSpeed != INIT_CAR_SPEED) carDriveSpeed = INIT_CAR_SPEED;
-                                    if (carTurnSpeed != INIT_CAR_TURN_SPEED) carTurnSpeed = INIT_CAR_TURN_SPEED;
+                                    carVelocity = 0.0f;
+                                    carTurnSpeed = INIT_CAR_TURN_SPEED;
+                                    currentDriveState = DriveState::STATE_DRIVE_IDLE;
+                                    collisionDetected = true;
                                 }
                             }
+                        }
+                        if (collisionDetected)
+                        {
+                            carAngle = oldCarAngle;
+                            g_Angle = -carAngle + CAR_ANGLE_ADJUSTMENT;
+                            playerPos = { camera.position.x, camera.position.z };
+                            g_X = (playerPos.x) * SCALEFACTOR;
+                            g_Y = (playerPos.y) * SCALEFACTOR;
+                            move = true;
                         }
                         if (!mouseOnText && (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) && IsKeyPressed(KEY_C))
                         {
@@ -866,6 +882,7 @@ int main() {
                             g_X = 0;
                             g_Y = 125;
                         }
+                    }
                         break;
                     case GameState::STATE_LOBBY:
                         if (windowIsKeyPressedUp() || windowIsKeyPressed(KEY_W))
