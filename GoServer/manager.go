@@ -130,8 +130,6 @@ func (m *Manager) setupEventHandlers() {
 			if raceStartMsg.CountdownMs <= 0 {
 				raceStartMsg.CountdownMs = defaultRaceCountdownMs
 			}
-			m.clearRaceReadyState(raceStartMsg.CourseID)
-
 			now := time.Now()
 			clientDataPayload := BroadcastRaceStartEvent{
 				BType:        BEventRaceStartMessage,
@@ -146,7 +144,10 @@ func (m *Manager) setupEventHandlers() {
 			if jsonerr != nil {
 				log.Printf("error creating json broadcast message: %v", jsonerr)
 			}
-			m.broadcastUpdateToAll(bytepayload)
+			if m.broadcastUpdateToCourse(raceStartMsg.CourseID, bytepayload) == 0 {
+				c.egress <- bytepayload
+			}
+			m.clearRaceReadyState(raceStartMsg.CourseID)
 		}
 		return nil
 	}
@@ -182,10 +183,9 @@ func (m *Manager) setupEventHandlers() {
 			if jsonerr != nil {
 				log.Printf("error creating json broadcast message: %v", jsonerr)
 			}
-			m.broadcastUpdateToAll(bytepayload)
+			m.broadcastUpdateToCourse(raceReadyMsg.CourseID, bytepayload)
 
 			if allReady {
-				m.clearRaceReadyState(raceReadyMsg.CourseID)
 				countdownMs := defaultRaceCountdownMs
 				startPayload := BroadcastRaceStartEvent{
 					BType:        BEventRaceStartMessage,
@@ -200,7 +200,8 @@ func (m *Manager) setupEventHandlers() {
 				if startJsonErr != nil {
 					log.Printf("error creating json broadcast message: %v", startJsonErr)
 				}
-				m.broadcastUpdateToAll(startBytes)
+				m.broadcastUpdateToCourse(raceReadyMsg.CourseID, startBytes)
+				m.clearRaceReadyState(raceReadyMsg.CourseID)
 			}
 		}
 		return nil
@@ -424,6 +425,22 @@ func (m *Manager) broadcastUpdateToAll(bytepayload []byte) {
 			clientElement.egress <- bytepayload
 		}
 	}
+}
+
+func (m *Manager) broadcastUpdateToCourse(courseID string, bytepayload []byte) int {
+	m.RLock()
+	recipients := make([]*Client, 0)
+	for clientElement, connected := range m.clients {
+		if connected && m.raceCourses[clientElement.UUID] == courseID {
+			recipients = append(recipients, clientElement)
+		}
+	}
+	m.RUnlock()
+
+	for _, clientElement := range recipients {
+		clientElement.egress <- bytepayload
+	}
+	return len(recipients)
 }
 
 func (m *Manager) sendUpdateToPeer(toUUID string, bytepayload []byte) {

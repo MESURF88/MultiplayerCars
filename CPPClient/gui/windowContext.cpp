@@ -23,7 +23,9 @@ static constexpr int racePortalBoxHeight = 132;
 static constexpr int racePortalBoxWidth = 286;
 static constexpr int racePortalX = screenWidth - racePortalBoxWidth - 112;
 static constexpr int racePortalY = 286;
-static constexpr int futurePortalX = racePortalX - racePortalBoxWidth - 72;
+static constexpr int cityPortalX = racePortalX - racePortalBoxWidth - 72;
+static constexpr const char* simpleCircuitCourseId = "simple-circuit";
+static constexpr const char* cityLoopCourseId = "city-loop";
 
 static const raylib::Color defaultMainTextColor = raylib::Color::Gray();
 // the one and only window
@@ -32,7 +34,7 @@ raylib::Window window(screenWidth, screenHeight, std::string("car sim game alpha
 static const Rectangle chatSendBoxRect = { 0, screenHeight - menuPanelHeight - chatSendBoxHeight, chatSendBoxWidth, chatSendBoxHeight };
 static const Rectangle chatSendButtonRect = { chatSendBoxWidth-1, screenHeight - menuPanelHeight - chatSendBoxHeight, 100, chatSendBoxHeight };
 static const Rectangle racePortalRect = { racePortalX, racePortalY, racePortalBoxWidth, racePortalBoxHeight };
-static const Rectangle futurePortalRect = { futurePortalX, racePortalY, racePortalBoxWidth, racePortalBoxHeight };
+static const Rectangle cityPortalRect = { cityPortalX, racePortalY, racePortalBoxWidth, racePortalBoxHeight };
 
 static const std::map<int, ColorHexMap> colorEnumToHexValue = {
 	{colorSelectionType::BLUECOLOR, ColorHexMap(7991807, "0079F1")},
@@ -198,10 +200,19 @@ static void drawCoursePortalCar(Rectangle portalRect, bool highlighted, bool ena
 	}
 }
 
-static void drawParkedRacePortalCar(bool playerInRacePortal)
+static Rectangle playerCollisionRect(int xPos, int yPos)
 {
-	drawCoursePortalCar(futurePortalRect, false, false, "Future Circuit", "Coming soon");
-	drawCoursePortalCar(racePortalRect, playerInRacePortal, true, "Simple Circuit", playerInRacePortal ? "Press E to race" : "Open");
+	return { static_cast<float>(xPos), static_cast<float>(yPos), static_cast<float>(getCarWidth()), static_cast<float>(getCarHeight()) };
+}
+
+static void drawParkedRacePortalCar(int xPos, int yPos)
+{
+	const Rectangle playerRect = playerCollisionRect(xPos, yPos);
+	const bool playerInCityPortal = CheckCollisionRecs(playerRect, cityPortalRect);
+	const bool playerInSimplePortal = CheckCollisionRecs(playerRect, racePortalRect);
+
+	drawCoursePortalCar(cityPortalRect, playerInCityPortal, true, "City Loop", playerInCityPortal ? "Press E to race" : "Open");
+	drawCoursePortalCar(racePortalRect, playerInSimplePortal, true, "Simple Circuit", playerInSimplePortal ? "Press E to race" : "Open");
 }
 
 void drawLobbyStreetScene()
@@ -265,16 +276,17 @@ void drawChatSendBox(bool mouseOnText, const char *text)
 	DrawText(text, (int)chatSendBoxRect.x + 5, (int)chatSendBoxRect.y + 5, 20, MAROON);
 }
 
-void drawPortalRaceInfoPane(bool playerInRacePortal)
+void drawPortalRaceInfoPane(const std::string& courseId, const std::string& courseDisplayName)
 {
-	if (playerInRacePortal)
+	if (!courseDisplayName.empty())
 	{
-		const int promptX = static_cast<int>(racePortalRect.x + 34);
-		const int promptY = static_cast<int>(racePortalRect.y - 78);
-		DrawRectangleRounded({ static_cast<float>(promptX), static_cast<float>(promptY), 218.0f, 58.0f }, 0.18f, 8, Fade(GetColor(0x11171DFF), 0.86f));
-		DrawRectangleRoundedLinesEx({ static_cast<float>(promptX), static_cast<float>(promptY), 218.0f, 58.0f }, 0.18f, 8, 2.0f, GOLD);
+		const Rectangle promptPortalRect = (courseId == cityLoopCourseId) ? cityPortalRect : racePortalRect;
+		const int promptX = static_cast<int>(promptPortalRect.x + 34);
+		const int promptY = static_cast<int>(promptPortalRect.y - 78);
+		DrawRectangleRounded({ static_cast<float>(promptX), static_cast<float>(promptY), 246.0f, 58.0f }, 0.18f, 8, Fade(GetColor(0x11171DFF), 0.86f));
+		DrawRectangleRoundedLinesEx({ static_cast<float>(promptX), static_cast<float>(promptY), 246.0f, 58.0f }, 0.18f, 8, 2.0f, GOLD);
 		DrawText("E", promptX + 24, promptY + 14, 30, GOLD);
-		DrawText("Simple Circuit", promptX + 66, promptY + 18, 22, RAYWHITE);
+		DrawText(courseDisplayName.c_str(), promptX + 66, promptY + 18, 22, RAYWHITE);
 	}
 }
 
@@ -286,8 +298,7 @@ void drawSendTextButton()
 
 void drawPortalRectangles(int xPos, int yPos)
 {
-	const bool playerInRacePortal = CheckCollisionRecs({ static_cast<float>(xPos), static_cast<float>(yPos), static_cast<float>(getCarWidth()), static_cast<float>(getCarHeight()) }, racePortalRect);
-	drawParkedRacePortalCar(playerInRacePortal);
+	drawParkedRacePortalCar(xPos, yPos);
 }
 
 void drawChatSendBoxBlinkingUnderscore(const int& framesCounter, const char * text)
@@ -476,5 +487,32 @@ void windowSetMouseCursorDefault()
 
 bool windowIsPlayerCollidesRacePortal(int xPos, int yPos)
 {
-	return CheckCollisionRecs({ static_cast<float>(xPos), static_cast<float>(yPos), static_cast<float>(getCarWidth()), static_cast<float>(getCarHeight()) }, racePortalRect);
+	return !windowGetPlayerRacePortalCourseId(xPos, yPos).empty();
+}
+
+std::string windowGetPlayerRacePortalCourseId(int xPos, int yPos)
+{
+	const Rectangle playerRect = playerCollisionRect(xPos, yPos);
+	if (CheckCollisionRecs(playerRect, cityPortalRect))
+	{
+		return cityLoopCourseId;
+	}
+	if (CheckCollisionRecs(playerRect, racePortalRect))
+	{
+		return simpleCircuitCourseId;
+	}
+	return "";
+}
+
+std::string windowCoursePortalDisplayName(const std::string& courseId)
+{
+	if (courseId == cityLoopCourseId)
+	{
+		return "City Loop";
+	}
+	if (courseId == simpleCircuitCourseId)
+	{
+		return "Simple Circuit";
+	}
+	return "";
 }

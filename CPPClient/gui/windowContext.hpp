@@ -71,7 +71,7 @@ void drawLobbyStreetScene();
 void drawTextTestBox(std::string testStr);
 void drawChatBoxContainer();
 void drawChatSendBox(bool mouseOnText, const char* text);
-void drawPortalRaceInfoPane(bool playerInRacePortal);
+void drawPortalRaceInfoPane(const std::string& courseId, const std::string& courseDisplayName);
 void drawSendTextButton();
 void drawPortalRectangles(int xPos, int yPos);
 void drawChatSendBoxBlinkingUnderscore(const int& framesCounter, const char* tex);
@@ -99,6 +99,8 @@ bool windowIsMouseCollidesChatSendButton();
 void windowSetMouseCursorIBeam();
 void windowSetMouseCursorDefault();
 bool windowIsPlayerCollidesRacePortal(int xPos, int yPos);
+std::string windowGetPlayerRacePortalCourseId(int xPos, int yPos);
+std::string windowCoursePortalDisplayName(const std::string& courseId);
 
 
 #endif // _WINDOWCONTEXT_

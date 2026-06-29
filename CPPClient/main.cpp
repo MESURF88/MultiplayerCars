@@ -97,7 +97,6 @@ static constexpr float CAMERA_TURN_RESISTANCE_START_DEGREES = 20.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_FULL_DEGREES = 120.0f;
 static constexpr float CAMERA_TURN_RESISTANCE_MIN_FACTOR = 0.25f;
 static constexpr bool ENABLE_COURSE_WALLS = true;
-static constexpr bool ENABLE_MAP_COLLISION = false;
 static constexpr float GROUND_PLANE_SIZE = 8192.0f;
 static constexpr float GROUND_TEXTURE_REPEATS = 1536.0f;
 static constexpr float CAMERA_FOLLOW_DISTANCE = 6.0f;
@@ -309,6 +308,15 @@ static std::string findResourcePath(const std::string& fileName)
 
     std::cout << "error: could not find resource " << fileName << std::endl;
     return joinPath("resources", fileName);
+}
+
+static std::string courseResourceNameForId(const std::string& courseId)
+{
+    if (courseId == "city-loop")
+    {
+        return "courses/city_loop.json";
+    }
+    return "courses/simple_circuit.json";
 }
 
 static Texture2D loadTextureResource(const std::string& fileName)
@@ -533,7 +541,7 @@ int main() {
             int framesCounter = 0;
             int letterCount = 0;
             int letterIdx = 0;
-            bool playerInRacePortal = false;
+            std::string playerRacePortalCourseId;
             std::string gui_timestamp;
             std::map<std::string, CarContext> gui_externalplayers;
             std::deque<TextContext> gui_textmessagesdisplay;
@@ -545,8 +553,6 @@ int main() {
             int g_X = 0;
             int g_Y = 0;
             float g_Angle = 0.0f;
-            int g_SafetyX = 0;
-            int g_SafetyY = 0;
             //----------------------------------------------------------------------------------
             // End Initialize gui variables here
 
@@ -561,7 +567,7 @@ int main() {
             camera.fovy = 45.0f;                                // Camera field-of-view Y
             camera.projection = CAMERA_PERSPECTIVE;             // Camera projection type
             float playerRadius = 0.1f;  // Collision radius (player is modelled as a cilinder for collision)
-            CourseMap raceCourse = loadCourseOrDefault(findResourcePath("courses/simple_circuit.json"));
+            CourseMap raceCourse = loadCourseOrDefault(findResourcePath(courseResourceNameForId("simple-circuit")));
             Vector2 carPosition = raceCourse.startPosition;
             Vector2 playerPos = { 0 };
             Vector3 rotation = { 0 };
@@ -579,24 +585,6 @@ int main() {
             int racePlayerCount = 0;
             playerPos = carPosition;
             updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
-
-            Image imMap = LoadImage(findResourcePath("cubicmap.png").c_str());      // Load cubicmap image (RAM)
-            if (imMap.data == nullptr)
-            {
-                std::cout << "error: cubicmap.png failed to load; using empty fallback collision map" << std::endl;
-                imMap = GenImageColor(32, 16, BLACK);
-            }
-            Texture2D cubicmap = LoadTextureFromImage(imMap);       // Convert image to texture to display (VRAM)
-            Mesh mesh = GenMeshCubicmap(imMap, { 1.0f, 1.0f, 1.0f });
-            Model model = LoadModelFromMesh(mesh);
-
-            // NOTE: By default each cube is mapped to one part of texture atlas
-            Texture2D texture = loadTextureResource("cubicmap_atlas.png");    // Load map texture
-            model.materials[0].maps[MATERIAL_MAP_DIFFUSE].texture = texture;    // Set map diffuse texture
-
-            // Get map image data to be used for collision detection
-            Color* mapPixels = LoadImageColors(imMap);
-            UnloadImage(imMap);             // Unload image from RAM
 
             // Create a RenderTexture2D to be used for render to texture
             RenderTexture2D target3DArea = LoadRenderTexture(windowScreenWidth(), windowYBoundary());
@@ -647,7 +635,6 @@ int main() {
             Model carModel = loadModelResource("raceFuture.obj");
             int carPaintMaterialIndex = findCarPaintMaterialIndex(carModel);
 
-            Vector3 mapPosition = { -16.0f, 0.0f, -8.0f };  // Set model position
             auto resetCarToCourseStart = [&]() {
                 carPosition = raceCourse.startPosition;
                 playerPos = carPosition;
@@ -1027,16 +1014,6 @@ int main() {
                             move = true;
                         }
 
-                        g_SafetyX = (int)(playerPos.x - mapPosition.x + 0.5f);
-                        g_SafetyY = (int)(playerPos.y - mapPosition.z + 0.5f);
-
-                        // Out-of-limits security check
-                        if (g_SafetyX < 0) g_SafetyX = 0;
-                        else if (g_SafetyX >= cubicmap.width) g_SafetyX = cubicmap.width - 1;
-
-                        if (g_SafetyY < 0) g_SafetyY = 0;
-                        else if (g_SafetyY >= cubicmap.height) g_SafetyY = cubicmap.height - 1;
-
                         g_X = (playerPos.x)* SCALEFACTOR;
                         g_Y = (playerPos.y)* SCALEFACTOR;
 
@@ -1049,30 +1026,6 @@ int main() {
                             carTurnSpeed = INIT_CAR_TURN_SPEED;
                             currentDriveState = DriveState::STATE_DRIVE_IDLE;
                             collisionDetected = true;
-                        }
-                        if (ENABLE_MAP_COLLISION)
-                        {
-                            // Check map collisions using image data and player position.
-                            // Disabled while using the open ground/skybox scene.
-                            for (int y = 0; y < cubicmap.height; y++)
-                            {
-                                for (int x = 0; x < cubicmap.width; x++)
-                                {
-                                    if ((mapPixels[y * cubicmap.width + x].r == 255) &&
-                                        (CheckCollisionCircleRec(playerPos, playerRadius,
-                                            {
-                                        mapPosition.x - 0.5f + x * 1.0f, mapPosition.z - 0.5f + y * 1.0f, 1.0f, 1.0f
-                                            })))
-                                    {
-                                        carPosition = oldCarPosition;
-                                        carVelocity = 0.0f;
-                                        drsTimer = 0.0f;
-                                        carTurnSpeed = INIT_CAR_TURN_SPEED;
-                                        currentDriveState = DriveState::STATE_DRIVE_IDLE;
-                                        collisionDetected = true;
-                                    }
-                                }
-                            }
                         }
                         if (collisionDetected)
                         {
@@ -1155,16 +1108,13 @@ int main() {
                         }
                         
                         // portal handling
-                        if (windowIsPlayerCollidesRacePortal(g_X, g_Y))
+                        playerRacePortalCourseId = windowGetPlayerRacePortalCourseId(g_X, g_Y);
+                        if (!mouseOnText && !playerRacePortalCourseId.empty() && windowIsKeyOnlyPressed(KEY_E))
                         {
-                            playerInRacePortal = true;
-                        }
-                        else
-                        {
-                            playerInRacePortal = false;
-                        }
-                        if (!mouseOnText && playerInRacePortal && windowIsKeyOnlyPressed(KEY_E))
-                        {
+                            if (raceCourse.courseId != playerRacePortalCourseId)
+                            {
+                                raceCourse = loadCourseOrDefault(findResourcePath(courseResourceNameForId(playerRacePortalCourseId)));
+                            }
                             resetCarToCourseStart();
                             resetRaceSession(raceSession, raceCourse);
                             localRaceReady = false;
@@ -1322,7 +1272,6 @@ int main() {
                         rlEnableBackfaceCulling();
                         rlEnableDepthMask();
                         DrawModel(groundModel, { 0.0f, -0.03f, 0.0f }, 1.0f, WHITE);
-                        // DrawModel(model, mapPosition, 1.0f, WHITE);                  // Draw collision map
                         if (ENABLE_COURSE_WALLS)
                         {
                             drawCourseWalls(raceCourse);
@@ -1454,7 +1403,7 @@ int main() {
                         drawChatBoxContainer();
                         drawChatSendBox(mouseOnText, textmessage);
                         drawSendTextButton();
-                        drawPortalRaceInfoPane(playerInRacePortal);
+                        drawPortalRaceInfoPane(playerRacePortalCourseId, windowCoursePortalDisplayName(playerRacePortalCourseId));
                         if (mouseOnText)
                         {
                             if (letterCount < MAX_INPUT_CHARS)
@@ -1482,11 +1431,6 @@ int main() {
 
             // De-Initialization
             //--------------------------------------------------------------------------------------
-            UnloadImageColors(mapPixels);   // Unload color array
-
-            UnloadTexture(cubicmap);        // Unload cubicmap texture
-            UnloadTexture(texture);         // Unload map texture
-            UnloadModel(model);             // Unload map model
             UnloadModel(groundModel);       // Unload ground model
             UnloadTexture(groundTexture);   // Unload ground texture
             UnloadShader(skyboxShader);     // Unload skybox shader
