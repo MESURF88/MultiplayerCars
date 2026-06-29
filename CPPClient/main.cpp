@@ -109,6 +109,7 @@ static constexpr int MAX_DISPLAYED_TEXT_MESSAGES = 5;
 static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
 static constexpr int PERIODIC_POSITION_BATCH_HANDLING_MS = 1500;
+static constexpr int LOBBY_MOVE_SPEED = 5;
 ThreadSafeQueue<std::string> wsUpdatedJsonQueue;
 ThreadSafeQueue<std::string> guiJsonQueue;
 ThreadSafeQueue<std::string> positionJsonQueue;
@@ -1124,7 +1125,7 @@ int main() {
                         {
                             if (g_Y > 1)
                             {
-                                g_Y -= 2;
+                                g_Y = std::max(1, g_Y - LOBBY_MOVE_SPEED);
                                 move = true;
                             }
                         }
@@ -1132,7 +1133,7 @@ int main() {
                         {
                             if (g_Y < (windowYBoundary() - getCarHeight() - 1))
                             {
-                                g_Y += 2;
+                                g_Y = std::min(windowYBoundary() - getCarHeight() - 1, g_Y + LOBBY_MOVE_SPEED);
                                 move = true;
                             }
                         }
@@ -1140,7 +1141,7 @@ int main() {
                         {
                             if (g_X > 1)
                             {
-                                g_X -= 2;
+                                g_X = std::max(1, g_X - LOBBY_MOVE_SPEED);
                                 move = true;
                             }
                         }
@@ -1148,7 +1149,7 @@ int main() {
                         {
                             if (g_X < (windowScreenWidth() - getCarWidth() - 1))
                             {
-                                g_X += 2;
+                                g_X = std::min(windowScreenWidth() - getCarWidth() - 1, g_X + LOBBY_MOVE_SPEED);
                                 move = true;
                             }
                         }

@@ -23,6 +23,7 @@ static constexpr int racePortalBoxHeight = 132;
 static constexpr int racePortalBoxWidth = 286;
 static constexpr int racePortalX = screenWidth - racePortalBoxWidth - 112;
 static constexpr int racePortalY = 286;
+static constexpr int futurePortalX = racePortalX - racePortalBoxWidth - 72;
 
 static const raylib::Color defaultMainTextColor = raylib::Color::Gray();
 // the one and only window
@@ -31,6 +32,7 @@ raylib::Window window(screenWidth, screenHeight, std::string("car sim game alpha
 static const Rectangle chatSendBoxRect = { 0, screenHeight - menuPanelHeight - chatSendBoxHeight, chatSendBoxWidth, chatSendBoxHeight };
 static const Rectangle chatSendButtonRect = { chatSendBoxWidth-1, screenHeight - menuPanelHeight - chatSendBoxHeight, 100, chatSendBoxHeight };
 static const Rectangle racePortalRect = { racePortalX, racePortalY, racePortalBoxWidth, racePortalBoxHeight };
+static const Rectangle futurePortalRect = { futurePortalX, racePortalY, racePortalBoxWidth, racePortalBoxHeight };
 
 static const std::map<int, ColorHexMap> colorEnumToHexValue = {
 	{colorSelectionType::BLUECOLOR, ColorHexMap(7991807, "0079F1")},
@@ -145,34 +147,61 @@ static void drawLobbyBuilding(int x, int y, int width, int height, Color facade,
 	DrawRectangle(x + 34, y + height - 44, width - 68, 34, GetColor(0x8ECFE8FF));
 }
 
-static void drawParkedRacePortalCar(bool playerInRacePortal)
+static void drawLobbyBillboard()
 {
-	const Color glowColor = playerInRacePortal ? GOLD : Fade(ORANGE, 0.58f);
-	const Color bodyColor = GetColor(0xE62937FF);
-	const Color trimColor = GetColor(0x11171DFF);
-	const int carX = static_cast<int>(racePortalRect.x + 24);
-	const int carY = static_cast<int>(racePortalRect.y + 36);
-	const int carW = static_cast<int>(racePortalRect.width - 48);
+	const Rectangle billboard = { 34.0f, 18.0f, 620.0f, 90.0f };
+	DrawRectangle(72, 104, 10, 44, GetColor(0x56616AFF));
+	DrawRectangle(604, 104, 10, 44, GetColor(0x56616AFF));
+	DrawRectangleRounded({ billboard.x + 8.0f, billboard.y + 8.0f, billboard.width, billboard.height }, 0.08f, 8, Fade(BLACK, 0.18f));
+	DrawRectangleRounded(billboard, 0.08f, 8, RAYWHITE);
+	DrawRectangleRoundedLinesEx(billboard, 0.08f, 8, 3.0f, GetColor(0x25313AFF));
+	DrawRectangle(static_cast<int>(billboard.x) + 18, static_cast<int>(billboard.y) + 18, 8, 54, GetColor(0x2E363CFF));
+	DrawText("DOWNTOWN LOBBY", static_cast<int>(billboard.x) + 42, static_cast<int>(billboard.y) + 16, 30, GetColor(0x25313AFF));
+	DrawText("Cruise to a course car and press E to enter", static_cast<int>(billboard.x) + 44, static_cast<int>(billboard.y) + 54, 20, GetColor(0x43515BFF));
+}
+
+static void drawCoursePortalCar(Rectangle portalRect, bool highlighted, bool enabled, const char* courseLabel, const char* statusText)
+{
+	const Color glowColor = highlighted ? GOLD : (enabled ? Fade(ORANGE, 0.58f) : Fade(LIGHTGRAY, 0.42f));
+	const Color bodyColor = enabled ? GetColor(0xE62937FF) : GetColor(0x7F878EFF);
+	const Color trimColor = enabled ? GetColor(0x11171DFF) : GetColor(0x3E464DFF);
+	const Color labelColor = enabled ? RAYWHITE : GetColor(0xD3D8DDFF);
+	const int carX = static_cast<int>(portalRect.x + 24);
+	const int carY = static_cast<int>(portalRect.y + 36);
+	const int carW = static_cast<int>(portalRect.width - 48);
 	const int carH = 62;
 
-	DrawRectangleRounded({ racePortalRect.x - 10, racePortalRect.y - 10, racePortalRect.width + 20, racePortalRect.height + 20 }, 0.18f, 12, Fade(glowColor, playerInRacePortal ? 0.24f : 0.10f));
-	DrawRectangleRoundedLinesEx({ racePortalRect.x - 4, racePortalRect.y - 4, racePortalRect.width + 8, racePortalRect.height + 8 }, 0.18f, 12, 3.0f, glowColor);
+	DrawRectangleRounded({ portalRect.x - 10, portalRect.y - 10, portalRect.width + 20, portalRect.height + 20 }, 0.18f, 12, Fade(glowColor, highlighted ? 0.24f : 0.10f));
+	DrawRectangleRoundedLinesEx({ portalRect.x - 4, portalRect.y - 4, portalRect.width + 8, portalRect.height + 8 }, 0.18f, 12, enabled ? 3.0f : 2.0f, glowColor);
 
-	DrawRectangleRounded({ racePortalRect.x + 12, racePortalRect.y + 14, racePortalRect.width - 24, racePortalRect.height - 20 }, 0.15f, 10, GetColor(0x2A2F34FF));
-	DrawLineEx({ racePortalRect.x + 28, racePortalRect.y + racePortalRect.height - 20 }, { racePortalRect.x + racePortalRect.width - 28, racePortalRect.y + racePortalRect.height - 20 }, 3.0f, GetColor(0xF8F3D8FF));
+	DrawRectangleRounded({ portalRect.x + 12, portalRect.y + 14, portalRect.width - 24, portalRect.height - 20 }, 0.15f, 10, enabled ? GetColor(0x2A2F34FF) : GetColor(0x404850FF));
+	DrawLineEx({ portalRect.x + 28, portalRect.y + portalRect.height - 20 }, { portalRect.x + portalRect.width - 28, portalRect.y + portalRect.height - 20 }, 3.0f, enabled ? GetColor(0xF8F3D8FF) : GetColor(0x9FA7AEFF));
 
 	DrawRectangleRounded({ static_cast<float>(carX), static_cast<float>(carY + 18), static_cast<float>(carW), static_cast<float>(carH) }, 0.34f, 18, bodyColor);
 	DrawTriangle({ static_cast<float>(carX + 62), static_cast<float>(carY + 24) }, { static_cast<float>(carX + 116), static_cast<float>(carY - 8) }, { static_cast<float>(carX + 178), static_cast<float>(carY + 24) }, bodyColor);
-	DrawRectangleRounded({ static_cast<float>(carX + 92), static_cast<float>(carY + 4), 72.0f, 32.0f }, 0.22f, 8, GetColor(0xBFEAFFFF));
-	DrawRectangle(carX + 148, carY + 40, 54, 10, GetColor(0xFFD24AFF));
-	DrawRectangle(carX + 18, carY + 40, 40, 10, GetColor(0xFFFFFFFF));
+	DrawRectangleRounded({ static_cast<float>(carX + 92), static_cast<float>(carY + 4), 72.0f, 32.0f }, 0.22f, 8, enabled ? GetColor(0xBFEAFFFF) : GetColor(0xB9C0C6FF));
+	DrawRectangle(carX + 148, carY + 40, 54, 10, enabled ? GetColor(0xFFD24AFF) : GetColor(0xC3C8CDFF));
+	DrawRectangle(carX + 18, carY + 40, 40, 10, enabled ? GetColor(0xFFFFFFFF) : GetColor(0xD6DADEFF));
 	DrawRectangleRounded({ static_cast<float>(carX + carW - 36), static_cast<float>(carY + 4), 48.0f, 10.0f }, 0.5f, 8, trimColor);
 	DrawCircle(carX + 56, carY + carH + 16, 24, trimColor);
 	DrawCircle(carX + carW - 54, carY + carH + 16, 24, trimColor);
 	DrawCircle(carX + 56, carY + carH + 16, 11, GetColor(0xA8B2BAFF));
 	DrawCircle(carX + carW - 54, carY + carH + 16, 11, GetColor(0xA8B2BAFF));
 
-	DrawText(playerInRacePortal ? "PRESS E" : "RACE ENTRY", carX + 68, carY + carH + 40, playerInRacePortal ? 28 : 22, playerInRacePortal ? GOLD : RAYWHITE);
+	const int labelFontSize = highlighted ? 26 : 22;
+	const int labelX = carX + ((carW - MeasureText(courseLabel, labelFontSize)) / 2);
+	DrawText(courseLabel, labelX, carY + carH + 38, labelFontSize, highlighted ? GOLD : labelColor);
+	if (statusText != nullptr)
+	{
+		const int statusX = carX + ((carW - MeasureText(statusText, 15)) / 2);
+		DrawText(statusText, statusX, carY + carH + 66, 15, enabled ? GetColor(0xE8EEF2FF) : GetColor(0xC1C7CCFF));
+	}
+}
+
+static void drawParkedRacePortalCar(bool playerInRacePortal)
+{
+	drawCoursePortalCar(futurePortalRect, false, false, "Future Circuit", "Coming soon");
+	drawCoursePortalCar(racePortalRect, playerInRacePortal, true, "Simple Circuit", playerInRacePortal ? "Press E to race" : "Open");
 }
 
 void drawLobbyStreetScene()
@@ -215,9 +244,7 @@ void drawLobbyStreetScene()
 	DrawLine(0, playableBottom - 36, screenWidth, playableBottom - 36, GetColor(0xBBC3C9FF));
 	drawStreetLamp(1180, streetTop + 18);
 	drawStreetLamp(1428, streetTop + 18);
-
-	DrawText("DOWNTOWN LOBBY", 42, 24, 30, GetColor(0x25313AFF));
-	DrawText("Cruise to the race car and press E to enter the course", 44, 58, 18, GetColor(0x43515BFF));
+	drawLobbyBillboard();
 }
 
 void drawTextTestBox(std::string testStr)
@@ -247,7 +274,7 @@ void drawPortalRaceInfoPane(bool playerInRacePortal)
 		DrawRectangleRounded({ static_cast<float>(promptX), static_cast<float>(promptY), 218.0f, 58.0f }, 0.18f, 8, Fade(GetColor(0x11171DFF), 0.86f));
 		DrawRectangleRoundedLinesEx({ static_cast<float>(promptX), static_cast<float>(promptY), 218.0f, 58.0f }, 0.18f, 8, 2.0f, GOLD);
 		DrawText("E", promptX + 24, promptY + 14, 30, GOLD);
-		DrawText("Enter race", promptX + 66, promptY + 18, 22, RAYWHITE);
+		DrawText("Simple Circuit", promptX + 66, promptY + 18, 22, RAYWHITE);
 	}
 }
 
