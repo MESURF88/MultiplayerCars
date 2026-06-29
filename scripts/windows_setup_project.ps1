@@ -12,6 +12,8 @@ $vcpkgDir = Join-Path $toolsDir "vcpkg"
 $cppClientDir = Join-Path $repoRoot "CPPClient"
 $goServerDir = Join-Path $repoRoot "GoServer"
 
+. (Join-Path $PSScriptRoot "windows_local_tls.ps1")
+
 function Require-Command($Name, $Hint) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
         throw "$Name was not found. $Hint"
@@ -55,33 +57,9 @@ function Ensure-Vcpkg {
 }
 
 function Ensure-LocalRuntimeFiles {
-    $keysDir = Join-Path $goServerDir "keys"
-    $serverKey = Join-Path $keysDir "server.key"
-    $serverCert = Join-Path $keysDir "server.crt"
-    $clientCert = Join-Path $cppClientDir "server.crt"
     $clientEnv = Join-Path $cppClientDir ".env"
 
-    if (-not (Test-Path $keysDir)) {
-        New-Item -ItemType Directory -Path $keysDir | Out-Null
-    }
-
-    if ((-not (Test-Path $serverKey)) -or (-not (Test-Path $serverCert))) {
-        if (Get-Command openssl -ErrorAction SilentlyContinue) {
-            Write-Host "Generating local TLS certificate"
-            Invoke-CheckedNative openssl req -x509 -newkey rsa:2048 -nodes `
-                -keyout $serverKey `
-                -out $serverCert `
-                -days 365 `
-                -subj "/CN=localhost" `
-                -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
-        } else {
-            Write-Warning "openssl was not found. Create GoServer/keys/server.crt and GoServer/keys/server.key before running the local server."
-        }
-    }
-
-    if (Test-Path $serverCert) {
-        Copy-Item -Path $serverCert -Destination $clientCert -Force
-    }
+    Ensure-WindowsLocalTlsFiles -RepoRoot $repoRoot
 
     if (-not (Test-Path $clientEnv)) {
         @'

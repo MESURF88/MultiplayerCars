@@ -25,9 +25,9 @@ Invoke-CheckedNative cmake --build --preset $preset
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $exePath = if ($Configuration -eq "Release") {
-    Join-Path $repoRoot "CPPClient\build\Release\carclient.exe"
+    Join-Path $repoRoot "CPPClient\build\CPPClient\Release\carclient.exe"
 } else {
-    Join-Path $repoRoot "CPPClient\builddbg\Debug\carclient.exe"
+    Join-Path $repoRoot "CPPClient\builddbg\CPPClient\Debug\carclient.exe"
 }
 
 Write-Host ""

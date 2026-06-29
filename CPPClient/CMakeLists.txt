@@ -188,6 +188,14 @@ add_custom_command(TARGET ${ProjName} PRE_BUILD
         "${CMAKE_CURRENT_SOURCE_DIR}/resources"
         "$<TARGET_FILE_DIR:${ProjName}>/resources")
 
+if(WIN32)
+    add_custom_command(TARGET ${ProjName} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:${ProjName}>
+            $<TARGET_FILE_DIR:${ProjName}>
+        COMMAND_EXPAND_LISTS)
+endif()
+
 foreach(runtime_file IN ITEMS server.crt .env)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${runtime_file}")
         add_custom_command(TARGET ${ProjName} POST_BUILD

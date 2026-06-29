@@ -53,7 +53,7 @@ This script:
 - installs Boost.Beast, Boost.System, and OpenSSL for the CMake toolchain
 - lets CMake/FetchContent restore code libraries such as raylib, cpr, nlohmann/json, and simdjson
 - creates `CPPClient/.env` if missing
-- copies/generates local TLS files when `openssl` is available
+- copies/generates local TLS files with OpenSSL or the Go fallback generator
 - configures the `windows-debug-local` CMake preset
 
 To restore dependencies and local runtime files without configuring CMake, add `-SkipConfigure`.
@@ -99,7 +99,7 @@ powershell -ExecutionPolicy Bypass -File scripts/windows_run_server.ps1
 Run the debug client:
 
 ```powershell
-.\CPPClient\builddbg\Debug\carclient.exe
+.\CPPClient\builddbg\CPPClient\Debug\carclient.exe
 ```
 
 # installing for client linux
