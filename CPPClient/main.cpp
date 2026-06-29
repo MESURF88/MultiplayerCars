@@ -1427,11 +1427,13 @@ int main() {
                     case GameState::STATE_LOBBY:
                         BeginDrawing();
                         windowDrawBackground();
+                        drawLobbyStreetScene();
+                        drawPortalRectangles(g_X, g_Y);
                         for (auto coords = gui_externalplayers.begin(); coords != gui_externalplayers.end(); coords++)
                         {
-                            drawCar(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
+                            drawLobbyDriver(coords->second.m_coords.m_X, coords->second.m_coords.m_Y, colorHexToString(coords->second.m_color));
                         }
-                        drawCar(g_X, g_Y);
+                        drawLobbyDriver(g_X, g_Y);
                         
                         // TODO: make function
                         drawFadeBackgroundLowerBox();
@@ -1451,7 +1453,6 @@ int main() {
                         drawChatBoxContainer();
                         drawChatSendBox(mouseOnText, textmessage);
                         drawSendTextButton();
-                        drawPortalRectangles(g_X, g_Y);
                         drawPortalRaceInfoPane(playerInRacePortal);
                         if (mouseOnText)
                         {

@@ -67,6 +67,7 @@ bool windowShouldCloseWrapper();
 void windowBeginDrawing(); // bookend any drawing with windowBeginDrawing and windowEndDrawing
 void windowEndDrawing();
 void windowDrawBackground();
+void drawLobbyStreetScene();
 void drawTextTestBox(std::string testStr);
 void drawChatBoxContainer();
 void drawChatSendBox(bool mouseOnText, const char* text);

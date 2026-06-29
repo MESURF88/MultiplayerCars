@@ -10,5 +10,7 @@ int getCarColorHexValue();
 std::string getCarColorString();
 void drawCar(int X, int Y);
 void drawCar(int X, int Y, int colorHexValue);
+void drawLobbyDriver(int X, int Y);
+void drawLobbyDriver(int X, int Y, int colorHexValue);
 
 #endif // _CARCLASS_
