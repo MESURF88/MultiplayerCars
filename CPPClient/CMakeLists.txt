@@ -86,7 +86,22 @@ if(NOT cpr_FOUND)
         GIT_TAG ${CPR_VERSION}
         GIT_SHALLOW TRUE
     )
-    FetchContent_MakeAvailable(cpr)
+    FetchContent_GetProperties(cpr)
+    if(NOT cpr_POPULATED)
+        FetchContent_Populate(cpr)
+        if(MSVC)
+            set(CPR_SSE_SOURCE "${cpr_SOURCE_DIR}/cpr/sse.cpp")
+            file(READ "${CPR_SSE_SOURCE}" CPR_SSE_CONTENT)
+            string(REPLACE
+                "std::from_chars(sv.begin(), sv.end(), retry_value)"
+                "std::from_chars(sv.data(), sv.data() + sv.size(), retry_value)"
+                CPR_SSE_CONTENT
+                "${CPR_SSE_CONTENT}"
+            )
+            file(WRITE "${CPR_SSE_SOURCE}" "${CPR_SSE_CONTENT}")
+        endif()
+        add_subdirectory("${cpr_SOURCE_DIR}" "${cpr_BINARY_DIR}")
+    endif()
 endif()
 
 find_package(raylib ${RAYLIB_VERSION} QUIET)

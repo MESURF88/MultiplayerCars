@@ -496,7 +496,7 @@ int main() {
     std::string port = "3000";
     std::cout << "DEBUG MODE" << std::endl;
 #else
-    std::string host = "onlinecarsimgame-ab2533447e53.herokuapp.com";
+    std::string host = "multiplayercars.onrender.com";
     std::string port = "443"; //https
 #endif
 

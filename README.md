@@ -50,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File scripts/windows_setup_project.ps1
 This script:
 - clones and bootstraps `vcpkg` into ignored `.tools/vcpkg`
 - restores Windows native libraries from `CPPClient/vcpkg.json`
-- installs Boost.System and OpenSSL for the CMake toolchain
+- installs Boost.Beast, Boost.System, and OpenSSL for the CMake toolchain
 - lets CMake/FetchContent restore code libraries such as raylib, cpr, nlohmann/json, and simdjson
 - creates `CPPClient/.env` if missing
 - copies/generates local TLS files when `openssl` is available
@@ -195,5 +195,5 @@ use piesockettester extension for google chrome
 
 # online server at
 ```
-https://onlinecarsimgame-ab2533447e53.herokuapp.com/
+https://multiplayercars.onrender.com/
 ```
