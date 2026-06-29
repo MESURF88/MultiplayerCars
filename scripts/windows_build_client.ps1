@@ -5,15 +5,29 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-CheckedNative {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Arguments
+    )
+
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FilePath failed with exit code $LASTEXITCODE"
+    }
+}
+
 $preset = if ($Configuration -eq "Release") { "windows-release" } else { "windows-debug-local" }
 
-cmake --build --preset $preset
+Invoke-CheckedNative cmake --build --preset $preset
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $exePath = if ($Configuration -eq "Release") {
-    Join-Path $repoRoot "CPPClient\build\carclient.exe"
+    Join-Path $repoRoot "CPPClient\build\Release\carclient.exe"
 } else {
-    Join-Path $repoRoot "CPPClient\builddbg\carclient.exe"
+    Join-Path $repoRoot "CPPClient\builddbg\Debug\carclient.exe"
 }
 
 Write-Host ""

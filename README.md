@@ -56,6 +56,8 @@ This script:
 - copies/generates local TLS files when `openssl` is available
 - configures the `windows-debug-local` CMake preset
 
+To restore dependencies and local runtime files without configuring CMake, add `-SkipConfigure`.
+
 The CMake presets are defined in `CMakePresets.json`, so Visual Studio and the VS Code CMake Tools extension can open the repository root and build directly.
 
 # building client windows
@@ -97,7 +99,7 @@ powershell -ExecutionPolicy Bypass -File scripts/windows_run_server.ps1
 Run the debug client:
 
 ```powershell
-.\CPPClient\builddbg\carclient.exe
+.\CPPClient\builddbg\Debug\carclient.exe
 ```
 
 # installing for client linux

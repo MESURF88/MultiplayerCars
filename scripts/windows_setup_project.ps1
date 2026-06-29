@@ -18,6 +18,20 @@ function Require-Command($Name, $Hint) {
     }
 }
 
+function Invoke-CheckedNative {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Arguments
+    )
+
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FilePath failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Ensure-Vcpkg {
     Require-Command git "Run scripts/windows_setup_system.ps1 first."
     Require-Command cmake "Run scripts/windows_setup_system.ps1 first."
@@ -28,13 +42,13 @@ function Ensure-Vcpkg {
 
     if (-not (Test-Path $vcpkgDir)) {
         Write-Host "Cloning vcpkg into $vcpkgDir"
-        git clone https://github.com/microsoft/vcpkg.git $vcpkgDir | Out-Host
+        Invoke-CheckedNative git clone https://github.com/microsoft/vcpkg.git $vcpkgDir
     }
 
     $vcpkgExe = Join-Path $vcpkgDir "vcpkg.exe"
     if (-not (Test-Path $vcpkgExe)) {
         Write-Host "Bootstrapping vcpkg"
-        & (Join-Path $vcpkgDir "bootstrap-vcpkg.bat") -disableMetrics | Out-Host
+        Invoke-CheckedNative (Join-Path $vcpkgDir "bootstrap-vcpkg.bat") -disableMetrics
     }
 
     return $vcpkgExe
@@ -54,7 +68,7 @@ function Ensure-LocalRuntimeFiles {
     if ((-not (Test-Path $serverKey)) -or (-not (Test-Path $serverCert))) {
         if (Get-Command openssl -ErrorAction SilentlyContinue) {
             Write-Host "Generating local TLS certificate"
-            openssl req -x509 -newkey rsa:2048 -nodes `
+            Invoke-CheckedNative openssl req -x509 -newkey rsa:2048 -nodes `
                 -keyout $serverKey `
                 -out $serverCert `
                 -days 365 `
@@ -83,7 +97,7 @@ function Restore-GoServer {
     if (Get-Command go -ErrorAction SilentlyContinue) {
         Push-Location $goServerDir
         try {
-            go mod tidy
+            Invoke-CheckedNative go mod tidy
         } finally {
             Pop-Location
         }
@@ -96,14 +110,14 @@ function Configure-Client($Preset) {
     Require-Command cmake "Run scripts/windows_setup_system.ps1 first."
 
     Write-Host "Configuring CMake preset $Preset"
-    cmake --preset $Preset
+    Invoke-CheckedNative cmake --preset $Preset
 }
 
 $preset = if ($Configuration -eq "Release") { "windows-release" } else { "windows-debug-local" }
 
 $vcpkgExe = Ensure-Vcpkg
 Write-Host "Restoring vcpkg manifest dependencies"
-& $vcpkgExe install --triplet x64-windows --x-manifest-root=$cppClientDir
+Invoke-CheckedNative $vcpkgExe install --triplet x64-windows --x-manifest-root=$cppClientDir
 
 Ensure-LocalRuntimeFiles
 Restore-GoServer
