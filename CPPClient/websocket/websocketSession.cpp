@@ -7,6 +7,13 @@
 
 namespace
 {
+    bool isExpectedSocketShutdown(const beast::error_code& ec)
+    {
+        return (ec == net::error::operation_aborted) ||
+            (ec == websocket::error::closed) ||
+            (ec == ssl::error::stream_truncated);
+    }
+
     void logOutgoingJsonError(const std::string& sourceName, const char* jsonText, simdjson::error_code error)
     {
         std::cout << "JSON minify error in outgoing " << sourceName << std::endl;
@@ -197,12 +204,24 @@ void WebsocketSession::workerWrite()
     do
     {
         std::string tmp = asyncWriteQueue.front();
+        if (!m_isConnected && tmp.empty())
+        {
+            asyncWriteQueue.pop();
+            break;
+        }
+
         beast::error_code ec;
         m_wss.write(net::buffer(tmp), ec);
         if (ec)
         {
-            std::cout << ec.message() << "\n";
-            std::cout << "error: could not write buffer" << std::endl;
+            if (!isExpectedSocketShutdown(ec))
+            {
+                std::cout << ec.message() << "\n";
+                std::cout << "error: could not write buffer" << std::endl;
+            }
+            m_isConnected = false;
+            asyncWriteQueue.pop();
+            break;
         }
         asyncWriteQueue.pop();
     } while (m_isConnected);
@@ -257,8 +276,14 @@ void WebsocketSession::workerRead()
             m_wss.read(buffer, ec);
             if (ec)
             {
-                std::cout << ec.message() << "\n";
-                std::cout << "error: could not read buffer" << std::endl;
+                if (!isExpectedSocketShutdown(ec))
+                {
+                    std::cout << ec.message() << "\n";
+                    std::cout << "error: could not read buffer" << std::endl;
+                }
+                m_isConnected = false;
+                asyncWriteQueue.push("");
+                break;
             }
             else
             {
@@ -278,18 +303,27 @@ void WebsocketSession::workerRead()
 void WebsocketSession::closeConnection()
 {
     m_isConnected = false;
-    asyncWriteQueue.push(""); // get out of deadlock
-    for (auto& t : m_threadList) t.join();
+
     beast::error_code ecCancel;
     m_wss.next_layer().next_layer().cancel(ecCancel);
-    if (ecCancel)
+    if (ecCancel && !isExpectedSocketShutdown(ecCancel))
     {
         std::cout << ecCancel.message() << "\n";
         std::cout << "error: could not cancel websocket" << std::endl;
     }
+
+    asyncWriteQueue.push(""); // get out of deadlock
+    for (auto& t : m_threadList)
+    {
+        if (t.joinable())
+        {
+            t.join();
+        }
+    }
+
     beast::error_code ecClose;
     m_wss.close(websocket::close_code::normal, ecClose);
-    if (ecClose)
+    if (ecClose && !isExpectedSocketShutdown(ecClose))
     {
         std::cout << ecClose.message() << "\n";
         std::cout << "error: could not close websocket" << std::endl;

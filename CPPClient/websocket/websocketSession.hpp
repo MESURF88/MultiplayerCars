@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <atomic>
 
 namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace http = beast::http;           // from <boost/beast/http.hpp>
@@ -55,7 +56,7 @@ private:
     std::string m_otp;
     std::string m_currColor;
     ThreadSafeQueue<std::string> asyncWriteQueue;
-    bool m_isConnected;
+    std::atomic<bool> m_isConnected;
     char m_posRawJson[300];
     char m_colorRawJson[300];
     char m_textMsgRawJson[300];
