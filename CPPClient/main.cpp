@@ -27,6 +27,7 @@
 #include <string>
 #include <chrono>
 #include <vector>
+#include <deque>
 #include <algorithm>
 #include <cmath>
 #include <simdjson.h>
@@ -49,6 +50,7 @@ enum class GameState {
     STATE_LOBBY,
     STATE_COUNTDOWN,
     STATE_RACING,
+    STATE_TRAFFIC_SIM,
     STATE_RESULTS,
     STATE_GAME_OVER
 };
@@ -109,6 +111,34 @@ static constexpr int MAX_INPUT_CHARS = 105;
 static constexpr int MAX_BATCHED_POSITIONS_THRESHOLD = 2;
 static constexpr int PERIODIC_POSITION_BATCH_HANDLING_MS = 1500;
 static constexpr int LOBBY_MOVE_SPEED = 5;
+static constexpr int TRAFFIC_LANE_COUNT = 4;
+static constexpr float TRAFFIC_LANE_WIDTH = 3.7f;
+static constexpr float TRAFFIC_ROAD_HALF_WIDTH = (TRAFFIC_LANE_COUNT * TRAFFIC_LANE_WIDTH) * 0.5f;
+static constexpr float TRAFFIC_EYE_HEIGHT = 1.22f;
+static constexpr float TRAFFIC_HEAD_MAX_YAW = 88.0f;
+static constexpr float TRAFFIC_HEAD_MIN_PITCH = -28.0f;
+static constexpr float TRAFFIC_HEAD_MAX_PITCH = 32.0f;
+static constexpr float TRAFFIC_MOUSE_SENSITIVITY = 0.11f;
+static constexpr float TRAFFIC_KEY_LOOK_SPEED = 90.0f;
+static constexpr float TRAFFIC_MAX_SPEED = 38.0f;
+static constexpr float TRAFFIC_MIN_SPEED = 0.0f;
+static constexpr float TRAFFIC_ACCELERATION = 10.0f;
+static constexpr float TRAFFIC_BRAKE_DECELERATION = 18.0f;
+static constexpr float TRAFFIC_COAST_DECELERATION = 3.0f;
+static constexpr float TRAFFIC_STEER_SPEED = 9.0f;
+static constexpr float TRAFFIC_SEGMENT_LENGTH = 80.0f;
+static constexpr int TRAFFIC_SEGMENT_COUNT = 8;
+static constexpr int TRAFFIC_VEHICLE_COUNT = 18;
+static constexpr float TRAFFIC_MPS_TO_MPH = 2.23693629f;
+static constexpr float TRAFFIC_METERS_PER_MILE = 1609.344f;
+static constexpr float TRAFFIC_EGO_LENGTH = 4.7f;
+static constexpr float TRAFFIC_EGO_WIDTH = 2.0f;
+static constexpr float TRAFFIC_IMPACT_COOLDOWN_SECONDS = 0.8f;
+static constexpr float TRAFFIC_STEERING_WHEEL_MAX_ANGLE = 55.0f;
+static constexpr float TRAFFIC_STEERING_WHEEL_RETURN_SPEED = 8.0f;
+static constexpr float TRAFFIC_BANNER_SLIDE_SECONDS = 0.32f;
+static constexpr float TRAFFIC_BANNER_HOLD_SECONDS = 3.0f;
+static constexpr float TRAFFIC_CLEAN_MILE_INTERVAL = 5.0f;
 ThreadSafeQueue<std::string> wsUpdatedJsonQueue;
 ThreadSafeQueue<std::string> guiJsonQueue;
 ThreadSafeQueue<std::string> positionJsonQueue;
@@ -312,10 +342,7 @@ static std::string findResourcePath(const std::string& fileName)
 
 static std::string courseResourceNameForId(const std::string& courseId)
 {
-    if (courseId == "city-loop")
-    {
-        return "courses/city_loop.json";
-    }
+    (void)courseId;
     return "courses/simple_circuit.json";
 }
 
@@ -475,6 +502,575 @@ public:
     std::string m_color;
 };
 
+struct TrafficVehicle
+{
+    int lane = 0;
+    int targetLane = 0;
+    float lateral = 0.0f;
+    float relativeZ = 0.0f;
+    float speed = 20.0f;
+    float desiredSpeed = 20.0f;
+    float laneChangeCooldown = 1.0f;
+    float length = 4.4f;
+    float width = 1.9f;
+    bool braking = false;
+    bool bigRig = false;
+    bool merging = false;
+    bool speedRacer = false;
+    int mergeSide = 0;
+    Color color = BLUE;
+};
+
+struct TrafficImpactResult
+{
+    bool hit = false;
+    const char* side = "NONE";
+};
+
+struct TrafficUpdateEvents
+{
+    int passedCars = 0;
+    int dodgedSpeedRacers = 0;
+};
+
+struct TrafficBanner
+{
+    std::string title;
+    std::string detail;
+    Color accent = GOLD;
+    float age = 0.0f;
+};
+
+static float trafficLaneCenter(int lane)
+{
+    const float centerOffset = (static_cast<float>(TRAFFIC_LANE_COUNT) - 1.0f) * 0.5f;
+    return (static_cast<float>(lane) - centerOffset) * TRAFFIC_LANE_WIDTH;
+}
+
+static float trafficRandom01(float seed)
+{
+    const float value = sinf(seed) * 43758.5453f;
+    return value - floorf(value);
+}
+
+static TrafficVehicle makeTrafficVehicle(int index)
+{
+    TrafficVehicle vehicle;
+    vehicle.lane = index % TRAFFIC_LANE_COUNT;
+    vehicle.targetLane = vehicle.lane;
+    vehicle.lateral = trafficLaneCenter(vehicle.lane);
+    vehicle.relativeZ = 36.0f + static_cast<float>(index * 21);
+    vehicle.bigRig = (index % 6) == 4;
+    vehicle.length = vehicle.bigRig ? 11.0f : 4.6f;
+    vehicle.width = vehicle.bigRig ? 2.35f : 1.95f;
+    vehicle.speed = 15.0f + static_cast<float>((index * 7) % 12);
+    vehicle.desiredSpeed = vehicle.speed;
+    vehicle.laneChangeCooldown = 1.5f + static_cast<float>((index * 5) % 8);
+    const Color palette[] = {
+        GetColor(0x0079F1FF),
+        GetColor(0xE62937FF),
+        GetColor(0xC8C8C8FF),
+        GetColor(0xFFA100FF),
+        GetColor(0x2E363CFF),
+        GetColor(0x25FDCBFF)
+    };
+    vehicle.color = palette[index % 6];
+    return vehicle;
+}
+
+static void startTrafficMerge(TrafficVehicle& vehicle, std::size_t index, float elapsedSeconds)
+{
+    const bool fromLeft = ((static_cast<int>(index) + static_cast<int>(elapsedSeconds)) % 2) == 0;
+    vehicle.merging = true;
+    vehicle.mergeSide = fromLeft ? -1 : 1;
+    vehicle.lane = fromLeft ? 0 : TRAFFIC_LANE_COUNT - 1;
+    vehicle.targetLane = vehicle.lane;
+    vehicle.lateral = static_cast<float>(vehicle.mergeSide) * (TRAFFIC_ROAD_HALF_WIDTH + 7.5f);
+    vehicle.relativeZ = 95.0f + static_cast<float>((static_cast<int>(index) * 31) % 150);
+    vehicle.speed = 12.0f + static_cast<float>((static_cast<int>(index) * 5 + static_cast<int>(elapsedSeconds)) % 7);
+    vehicle.desiredSpeed = 18.0f;
+    vehicle.laneChangeCooldown = 5.0f;
+}
+
+static void startTrafficSpeedRacer(TrafficVehicle& vehicle, std::size_t index, float elapsedSeconds)
+{
+    vehicle.speedRacer = true;
+    vehicle.merging = false;
+    vehicle.mergeSide = 0;
+    vehicle.bigRig = false;
+    vehicle.length = 4.4f;
+    vehicle.width = 1.9f;
+    vehicle.lane = static_cast<int>((index + static_cast<int>(elapsedSeconds)) % TRAFFIC_LANE_COUNT);
+    vehicle.targetLane = vehicle.lane;
+    vehicle.lateral = trafficLaneCenter(vehicle.lane);
+    vehicle.relativeZ = -92.0f - static_cast<float>((static_cast<int>(index) * 9) % 24);
+    vehicle.speed = 48.0f + static_cast<float>((static_cast<int>(index) * 7 + static_cast<int>(elapsedSeconds)) % 11);
+    vehicle.desiredSpeed = vehicle.speed;
+    vehicle.laneChangeCooldown = 1.2f + static_cast<float>((static_cast<int>(index) * 3) % 4);
+    vehicle.color = GetColor(0xFDF900FF);
+}
+
+static void resetTrafficVehicles(std::vector<TrafficVehicle>& trafficVehicles)
+{
+    trafficVehicles.clear();
+    trafficVehicles.reserve(TRAFFIC_VEHICLE_COUNT);
+    for (int index = 0; index < TRAFFIC_VEHICLE_COUNT; ++index)
+    {
+        trafficVehicles.push_back(makeTrafficVehicle(index));
+    }
+}
+
+static Vector3 trafficLookDirection(float yawDegrees, float pitchDegrees)
+{
+    const float yawRadians = yawDegrees * DEG2RAD;
+    const float pitchRadians = pitchDegrees * DEG2RAD;
+    const float horizontal = cosf(pitchRadians);
+    return { sinf(yawRadians) * horizontal, sinf(pitchRadians), cosf(yawRadians) * horizontal };
+}
+
+static void updateTrafficCamera(Camera& camera, float egoLateral, float headYaw, float headPitch)
+{
+    const Vector3 eye = { egoLateral, TRAFFIC_EYE_HEIGHT, 0.0f };
+    const Vector3 direction = trafficLookDirection(headYaw, headPitch);
+    camera.position = eye;
+    camera.target = { eye.x + direction.x, eye.y + direction.y, eye.z + direction.z };
+    camera.up = { 0.0f, 1.0f, 0.0f };
+    camera.fovy = 74.0f;
+    camera.projection = CAMERA_PERSPECTIVE;
+}
+
+static Camera makeTrafficRearViewCamera(float egoLateral)
+{
+    Camera mirrorCamera = { 0 };
+    mirrorCamera.position = { egoLateral, 1.72f, -0.35f };
+    mirrorCamera.target = { egoLateral, 1.48f, -28.0f };
+    mirrorCamera.up = { 0.0f, 1.0f, 0.0f };
+    mirrorCamera.fovy = 58.0f;
+    mirrorCamera.projection = CAMERA_PERSPECTIVE;
+    return mirrorCamera;
+}
+
+static TrafficImpactResult detectTrafficImpact(const std::vector<TrafficVehicle>& trafficVehicles, float egoLateral)
+{
+    TrafficImpactResult result;
+    const float egoHalfWidth = TRAFFIC_EGO_WIDTH * 0.5f;
+    const float egoHalfLength = TRAFFIC_EGO_LENGTH * 0.5f;
+
+    for (const TrafficVehicle& vehicle : trafficVehicles)
+    {
+        const float lateralGap = std::abs(vehicle.lateral - egoLateral);
+        const float longitudinalGap = std::abs(vehicle.relativeZ);
+        const float combinedHalfWidth = egoHalfWidth + vehicle.width * 0.5f;
+        const float combinedHalfLength = egoHalfLength + vehicle.length * 0.5f;
+        if (lateralGap < combinedHalfWidth && longitudinalGap < combinedHalfLength)
+        {
+            const float lateralPenetration = combinedHalfWidth - lateralGap;
+            const float longitudinalPenetration = combinedHalfLength - longitudinalGap;
+            result.hit = true;
+            if (longitudinalPenetration < lateralPenetration)
+            {
+                result.side = vehicle.relativeZ >= 0.0f ? "FRONT" : "REAR";
+            }
+            else
+            {
+                result.side = vehicle.lateral >= egoLateral ? "RIGHT" : "LEFT";
+            }
+            return result;
+        }
+    }
+
+    return result;
+}
+
+static bool trafficIsOutOfLane(float egoLateral)
+{
+    const int nearestLane = std::clamp(static_cast<int>(std::round((egoLateral / TRAFFIC_LANE_WIDTH) + ((static_cast<float>(TRAFFIC_LANE_COUNT) - 1.0f) * 0.5f))), 0, TRAFFIC_LANE_COUNT - 1);
+    const float laneCenter = trafficLaneCenter(nearestLane);
+    const float fullyInsideLaneOffset = (TRAFFIC_LANE_WIDTH - TRAFFIC_EGO_WIDTH) * 0.5f;
+    return std::abs(egoLateral - laneCenter) > fullyInsideLaneOffset;
+}
+
+static TrafficUpdateEvents updateTrafficVehicles(std::vector<TrafficVehicle>& trafficVehicles, float egoSpeed, float elapsedSeconds, float frameTime)
+{
+    TrafficUpdateEvents events;
+    const float recycleDistance = 430.0f;
+    for (std::size_t index = 0; index < trafficVehicles.size(); ++index)
+    {
+        TrafficVehicle& vehicle = trafficVehicles[index];
+        vehicle.laneChangeCooldown -= frameTime;
+        const float previousRelativeZ = vehicle.relativeZ;
+
+        const float pattern = sinf(elapsedSeconds * 0.31f + static_cast<float>(index) * 1.73f);
+        if (!vehicle.merging && vehicle.laneChangeCooldown <= 0.0f && pattern > (vehicle.speedRacer ? 0.34f : 0.58f))
+        {
+            const int direction = (sinf(elapsedSeconds * 0.47f + static_cast<float>(index) * 2.21f) > 0.0f) ? 1 : -1;
+            vehicle.targetLane = std::clamp(vehicle.lane + direction, 0, TRAFFIC_LANE_COUNT - 1);
+            vehicle.laneChangeCooldown = vehicle.speedRacer ? 0.8f + static_cast<float>((static_cast<int>(index) * 2) % 3) : 3.0f + static_cast<float>((static_cast<int>(index) * 3) % 6);
+        }
+
+        const float targetLateral = trafficLaneCenter(vehicle.targetLane);
+        const float lateralDelta = targetLateral - vehicle.lateral;
+        const float laneStep = (vehicle.merging ? 2.7f : 1.65f) * frameTime;
+        if (std::abs(lateralDelta) <= laneStep)
+        {
+            vehicle.lateral = targetLateral;
+            vehicle.lane = vehicle.targetLane;
+            vehicle.merging = false;
+            vehicle.mergeSide = 0;
+        }
+        else
+        {
+            vehicle.lateral += (lateralDelta > 0.0f ? 1.0f : -1.0f) * laneStep;
+        }
+
+        bool trafficAheadClose = false;
+        for (const TrafficVehicle& other : trafficVehicles)
+        {
+            if (&other == &vehicle) continue;
+            if (std::abs(other.lateral - vehicle.lateral) < 1.25f)
+            {
+                const float gap = other.relativeZ - vehicle.relativeZ;
+                if (gap > 0.0f && gap < 15.0f)
+                {
+                    trafficAheadClose = true;
+                    break;
+                }
+            }
+        }
+
+        const bool randomBrake = sinf(elapsedSeconds * 0.91f + static_cast<float>(index) * 4.31f) > 0.965f;
+        vehicle.braking = trafficAheadClose || (!vehicle.speedRacer && randomBrake);
+        if (vehicle.speedRacer)
+        {
+            vehicle.desiredSpeed = vehicle.braking ? std::max(34.0f, vehicle.speed - 13.0f) : (48.0f + static_cast<float>((static_cast<int>(index) * 7) % 12));
+        }
+        else
+        {
+            vehicle.desiredSpeed = vehicle.braking ? std::max(8.0f, vehicle.speed - 9.0f) : (14.0f + static_cast<float>((static_cast<int>(index) * 5) % 15));
+        }
+        const float speedStep = (vehicle.desiredSpeed < vehicle.speed ? (vehicle.speedRacer ? 14.0f : 8.0f) : (vehicle.speedRacer ? 6.0f : 3.0f)) * frameTime;
+        if (std::abs(vehicle.desiredSpeed - vehicle.speed) <= speedStep)
+        {
+            vehicle.speed = vehicle.desiredSpeed;
+        }
+        else
+        {
+            vehicle.speed += (vehicle.desiredSpeed > vehicle.speed ? 1.0f : -1.0f) * speedStep;
+        }
+
+        vehicle.relativeZ += (vehicle.speed - egoSpeed) * frameTime;
+        if (!vehicle.speedRacer && previousRelativeZ > 0.0f && vehicle.relativeZ <= 0.0f)
+        {
+            events.passedCars++;
+        }
+        else if (vehicle.speedRacer && previousRelativeZ < 0.0f && vehicle.relativeZ >= 0.0f)
+        {
+            events.dodgedSpeedRacers++;
+        }
+        if (vehicle.relativeZ < -95.0f)
+        {
+            vehicle.relativeZ += recycleDistance;
+            vehicle.speedRacer = false;
+            const float eventRoll = trafficRandom01(elapsedSeconds * 0.37f + static_cast<float>(index) * 19.173f);
+            const bool shouldSpeedRace = eventRoll > 0.965f;
+            const bool shouldMerge = eventRoll > 0.765f && eventRoll <= 0.965f;
+            if (shouldSpeedRace)
+            {
+                startTrafficSpeedRacer(vehicle, index, elapsedSeconds);
+            }
+            else if (shouldMerge)
+            {
+                startTrafficMerge(vehicle, index, elapsedSeconds);
+            }
+            else
+            {
+                vehicle.merging = false;
+                vehicle.mergeSide = 0;
+                vehicle.lane = (vehicle.lane + 1 + static_cast<int>(index)) % TRAFFIC_LANE_COUNT;
+                vehicle.targetLane = vehicle.lane;
+                vehicle.lateral = trafficLaneCenter(vehicle.lane);
+                vehicle.bigRig = (static_cast<int>(index) % 6) == 4;
+                vehicle.length = vehicle.bigRig ? 11.0f : 4.6f;
+                vehicle.width = vehicle.bigRig ? 2.35f : 1.95f;
+                vehicle.speed = 15.0f + static_cast<float>((static_cast<int>(index) * 7 + static_cast<int>(elapsedSeconds)) % 13);
+                vehicle.color = makeTrafficVehicle(static_cast<int>(index)).color;
+            }
+        }
+        else if (vehicle.relativeZ > recycleDistance - 20.0f)
+        {
+            vehicle.relativeZ -= recycleDistance;
+            vehicle.merging = false;
+            vehicle.speedRacer = false;
+            vehicle.mergeSide = 0;
+        }
+    }
+    return events;
+}
+
+static void drawTrafficRoad(float trafficDistance)
+{
+    const float roadWidth = TRAFFIC_ROAD_HALF_WIDTH * 2.0f + 2.0f;
+    const float segmentScroll = fmodf(trafficDistance, TRAFFIC_SEGMENT_LENGTH);
+    const float firstSegmentZ = -TRAFFIC_SEGMENT_LENGTH - segmentScroll;
+    for (int segment = 0; segment < TRAFFIC_SEGMENT_COUNT; ++segment)
+    {
+        const float segmentZ = firstSegmentZ + static_cast<float>(segment) * TRAFFIC_SEGMENT_LENGTH;
+        DrawCubeV({ 0.0f, -0.055f, segmentZ + TRAFFIC_SEGMENT_LENGTH * 0.5f }, { roadWidth, 0.05f, TRAFFIC_SEGMENT_LENGTH }, GetColor(0x2B333AFF));
+        DrawCubeV({ -TRAFFIC_ROAD_HALF_WIDTH - 1.0f, 0.08f, segmentZ + TRAFFIC_SEGMENT_LENGTH * 0.5f }, { 0.18f, 0.25f, TRAFFIC_SEGMENT_LENGTH }, GetColor(0xB5BCC2FF));
+        DrawCubeV({ TRAFFIC_ROAD_HALF_WIDTH + 1.0f, 0.08f, segmentZ + TRAFFIC_SEGMENT_LENGTH * 0.5f }, { 0.18f, 0.25f, TRAFFIC_SEGMENT_LENGTH }, GetColor(0xB5BCC2FF));
+    }
+
+    const float rampSpacing = 170.0f;
+    const float rampPhase = fmodf(trafficDistance, rampSpacing);
+    for (int ramp = -1; ramp < 5; ++ramp)
+    {
+        const float rampStartZ = -rampPhase + static_cast<float>(ramp) * rampSpacing + 62.0f;
+        const int side = (ramp % 2 == 0) ? -1 : 1;
+        for (int step = 0; step < 12; ++step)
+        {
+            const float t = static_cast<float>(step) / 11.0f;
+            const float rampX = static_cast<float>(side) * (TRAFFIC_ROAD_HALF_WIDTH + 8.2f - t * 5.5f);
+            const float rampZ = rampStartZ + t * 58.0f;
+            DrawCubeV({ rampX, -0.035f, rampZ }, { 3.2f, 0.055f, 6.2f }, GetColor(0x343D45FF));
+            DrawCubeV({ rampX - static_cast<float>(side) * 1.55f, 0.005f, rampZ }, { 0.08f, 0.025f, 4.4f }, GetColor(0xE9E4C9FF));
+        }
+    }
+
+    for (int lane = 1; lane < TRAFFIC_LANE_COUNT; ++lane)
+    {
+        const float laneX = -TRAFFIC_ROAD_HALF_WIDTH + static_cast<float>(lane) * TRAFFIC_LANE_WIDTH;
+        for (int dash = -5; dash < 28; ++dash)
+        {
+            const float dashZ = -fmodf(trafficDistance, 11.0f) + static_cast<float>(dash) * 11.0f;
+            DrawCubeV({ laneX, 0.01f, dashZ }, { 0.12f, 0.025f, 5.8f }, GetColor(0xE9E4C9FF));
+        }
+    }
+}
+
+static void drawTrafficVehicle(const TrafficVehicle& vehicle)
+{
+    const float y = 0.42f;
+    const Vector3 base = { vehicle.lateral, y, vehicle.relativeZ };
+
+    // TODO: replace procedural placeholder with a refined traffic car model.
+    if (vehicle.speedRacer)
+    {
+        DrawCubeV(base, { vehicle.width, 0.62f, vehicle.length }, vehicle.color);
+        DrawCubeV({ base.x, base.y + 0.36f, base.z + 0.10f }, { vehicle.width * 0.66f, 0.34f, vehicle.length * 0.36f }, GetColor(0x11171DFF));
+        DrawCubeV({ base.x, base.y - 0.31f, base.z + vehicle.length * 0.30f }, { vehicle.width * 0.94f, 0.12f, 0.35f }, GetColor(0xFF4A2BFF));
+        DrawSphere({ vehicle.lateral - vehicle.width * 0.34f, 0.62f, vehicle.relativeZ + vehicle.length * 0.5f + 0.08f }, 0.12f, Fade(WHITE, 0.85f));
+        DrawSphere({ vehicle.lateral + vehicle.width * 0.34f, 0.62f, vehicle.relativeZ + vehicle.length * 0.5f + 0.08f }, 0.12f, Fade(WHITE, 0.85f));
+    }
+    else if (!vehicle.bigRig)
+    {
+        DrawCubeV(base, { vehicle.width, 0.82f, vehicle.length }, vehicle.color);
+        DrawCubeV({ base.x, base.y + 0.48f, base.z + 0.15f }, { vehicle.width * 0.72f, 0.56f, vehicle.length * 0.44f }, GetColor(0xBFEAFFFF));
+        DrawCubeV({ base.x, base.y - 0.37f, base.z + vehicle.length * 0.22f }, { vehicle.width * 0.92f, 0.16f, 0.25f }, GetColor(0x11171DFF));
+    }
+    else
+    {
+        // TODO: replace procedural placeholder with a refined big-rig model.
+        DrawCubeV({ base.x, base.y + 0.18f, base.z - 1.4f }, { vehicle.width, 1.2f, vehicle.length * 0.68f }, GetColor(0xD8DDE2FF));
+        DrawCubeV({ base.x, base.y + 0.08f, base.z + vehicle.length * 0.28f }, { vehicle.width, 1.05f, vehicle.length * 0.25f }, vehicle.color);
+        DrawCubeV({ base.x, base.y + 0.64f, base.z + vehicle.length * 0.36f }, { vehicle.width * 0.72f, 0.38f, vehicle.length * 0.12f }, GetColor(0xBFEAFFFF));
+    }
+
+    const float rearZ = vehicle.relativeZ - vehicle.length * 0.5f - 0.08f;
+    const Color tailColor = vehicle.braking ? RED : Fade(RED, 0.55f);
+    DrawSphere({ vehicle.lateral - vehicle.width * 0.36f, 0.52f, rearZ }, vehicle.braking ? 0.18f : 0.10f, tailColor);
+    DrawSphere({ vehicle.lateral + vehicle.width * 0.36f, 0.52f, rearZ }, vehicle.braking ? 0.18f : 0.10f, tailColor);
+    if (vehicle.braking)
+    {
+        DrawSphere({ vehicle.lateral - vehicle.width * 0.36f, 0.52f, rearZ - 0.05f }, 0.32f, Fade(RED, 0.25f));
+        DrawSphere({ vehicle.lateral + vehicle.width * 0.36f, 0.52f, rearZ - 0.05f }, 0.32f, Fade(RED, 0.25f));
+    }
+}
+
+static void drawTrafficScene(const std::vector<TrafficVehicle>& trafficVehicles, float trafficDistance)
+{
+    drawTrafficRoad(trafficDistance);
+    for (const TrafficVehicle& vehicle : trafficVehicles)
+    {
+        if (vehicle.relativeZ > -120.0f && vehicle.relativeZ < 360.0f)
+        {
+            drawTrafficVehicle(vehicle);
+        }
+    }
+}
+
+static Vector3 trafficWheelPoint(Vector3 center, float x, float y, float angleDegrees)
+{
+    const float angleRadians = angleDegrees * DEG2RAD;
+    const float rotatedX = x * cosf(angleRadians) - y * sinf(angleRadians);
+    const float rotatedY = x * sinf(angleRadians) + y * cosf(angleRadians);
+    return { center.x + rotatedX, center.y + rotatedY, center.z - 0.10f };
+}
+
+static void drawTrafficDashBobblehead(float egoLateral, Color playerColor)
+{
+    const float time = static_cast<float>(GetTime());
+    const float bobble = sinf(time * 6.4f) * 0.025f;
+    const float sway = sinf(time * 4.1f) * 0.035f;
+    const Vector3 base = { egoLateral + 0.54f, 0.63f, 1.07f };
+    const Vector3 springBottom = { base.x, base.y + 0.04f, base.z };
+    const Vector3 springTop = { base.x + sway * 0.35f, base.y + 0.18f + bobble, base.z - 0.02f };
+    const Vector3 body = { springTop.x, springTop.y + 0.08f, springTop.z };
+    const Vector3 head = { springTop.x + sway, springTop.y + 0.25f + bobble, springTop.z - 0.01f };
+
+    DrawCylinderEx({ base.x, base.y, base.z }, { base.x, base.y + 0.035f, base.z }, 0.16f, 0.13f, 18, GetColor(0x151C22FF));
+    DrawCylinderEx({ base.x, base.y + 0.038f, base.z }, { base.x, base.y + 0.052f, base.z }, 0.13f, 0.11f, 18, playerColor);
+    DrawSphere({ base.x, base.y + 0.055f, base.z }, 0.18f, Fade(playerColor, 0.20f));
+    DrawCylinderEx(springBottom, springTop, 0.018f, 0.014f, 10, GetColor(0xC8CDD1FF));
+    DrawSphere(body, 0.095f, playerColor);
+    DrawSphere({ body.x, body.y + 0.018f, body.z - 0.075f }, 0.032f, Fade(RAYWHITE, 0.75f));
+    DrawSphere(head, 0.105f, GetColor(0xF0C08DFF));
+    DrawSphere({ head.x - 0.034f, head.y + 0.022f, head.z + 0.082f }, 0.012f, GetColor(0x11171DFF));
+    DrawSphere({ head.x + 0.034f, head.y + 0.022f, head.z + 0.082f }, 0.012f, GetColor(0x11171DFF));
+    DrawCubeV({ head.x, head.y + 0.092f, head.z }, { 0.16f, 0.042f, 0.15f }, playerColor);
+}
+
+static void drawTrafficCockpitPanelTextures(RenderTexture2D& leftPanelTarget, RenderTexture2D& rightPanelTarget, float egoSpeed, float headYaw, float trafficDistance)
+{
+    (void)headYaw;
+    const float milesDriven = trafficDistance / TRAFFIC_METERS_PER_MILE;
+    const int fiveMileMarker = static_cast<int>(milesDriven / 5.0f) * 5;
+    const float mph = egoSpeed * TRAFFIC_MPS_TO_MPH;
+    const int rpm = static_cast<int>(900.0f + std::clamp(egoSpeed / TRAFFIC_MAX_SPEED, 0.0f, 1.0f) * 6700.0f);
+
+    BeginTextureMode(leftPanelTarget);
+    ClearBackground(BLANK);
+    DrawRectangleRounded({ 0.0f, 0.0f, static_cast<float>(leftPanelTarget.texture.width), static_cast<float>(leftPanelTarget.texture.height) }, 0.16f, 8, GetColor(0x1B232AFF));
+    DrawRectangleRoundedLinesEx({ 2.0f, 2.0f, static_cast<float>(leftPanelTarget.texture.width - 4), static_cast<float>(leftPanelTarget.texture.height - 4) }, 0.16f, 8, 3.0f, GetColor(0x4F626FFF));
+    DrawText(TextFormat("%03.0f mph", mph), 26, 18, 34, RAYWHITE);
+    DrawText(TextFormat("RPM %d", rpm), 28, 58, 20, GetColor(0xB8C0C7FF));
+    EndTextureMode();
+
+    BeginTextureMode(rightPanelTarget);
+    ClearBackground(BLANK);
+    DrawRectangleRounded({ 0.0f, 0.0f, static_cast<float>(rightPanelTarget.texture.width), static_cast<float>(rightPanelTarget.texture.height) }, 0.16f, 8, GetColor(0x1B232AFF));
+    DrawRectangleRoundedLinesEx({ 2.0f, 2.0f, static_cast<float>(rightPanelTarget.texture.width - 4), static_cast<float>(rightPanelTarget.texture.height - 4) }, 0.16f, 8, 3.0f, GetColor(0x4F626FFF));
+    DrawText(TextFormat("Miles %.1f", milesDriven), 26, 18, 28, RAYWHITE);
+    DrawText(TextFormat("Next mile marker %d", fiveMileMarker + 5), 26, 56, 20, GetColor(0xD7DEE5FF));
+    EndTextureMode();
+}
+
+static void drawTrafficCockpit3D(Camera camera, Model& steeringWheelModel, float egoLateral, float steeringWheelAngle, Texture2D leftPanelTexture, Texture2D rightPanelTexture)
+{
+    const Vector3 wheelCenter = { egoLateral, 0.43f, 0.82f };
+    const Rectangle leftPanelSource = { 0.0f, 0.0f, static_cast<float>(leftPanelTexture.width), static_cast<float>(-leftPanelTexture.height) };
+    const Rectangle rightPanelSource = { 0.0f, 0.0f, static_cast<float>(rightPanelTexture.width), static_cast<float>(-rightPanelTexture.height) };
+    const Color frameColor = GetColor(0x12191FFF);
+    const Color frameHighlight = GetColor(0x2D3942FF);
+
+    DrawCubeV({ egoLateral, 0.25f, 0.82f }, { 4.05f, 0.48f, 0.74f }, GetColor(0x0E1419FF));
+    DrawCubeV({ egoLateral, 0.36f, 1.20f }, { 3.85f, 0.24f, 0.38f }, GetColor(0x11171DFF));
+    DrawCubeV({ egoLateral, 0.57f, 1.02f }, { 3.60f, 0.15f, 0.18f }, frameColor);
+    DrawCubeV({ egoLateral, 0.10f, 0.24f }, { 4.15f, 0.38f, 0.95f }, GetColor(0x0B1015FF));
+    DrawBillboardPro(camera, leftPanelTexture, leftPanelSource, { egoLateral - 0.92f, 0.76f, 1.08f }, { 0.0f, 1.0f, 0.0f }, { 0.82f, 0.30f }, { 0.41f, 0.15f }, 0.0f, WHITE);
+    DrawBillboardPro(camera, rightPanelTexture, rightPanelSource, { egoLateral + 0.95f, 0.76f, 1.08f }, { 0.0f, 1.0f, 0.0f }, { 0.98f, 0.30f }, { 0.49f, 0.15f }, 0.0f, WHITE);
+    drawTrafficDashBobblehead(egoLateral, GetColor(getCarColorHexValue()));
+
+    DrawCubeV({ egoLateral - 1.78f, 0.58f, -0.18f }, { 0.16f, 0.76f, 1.96f }, frameColor);
+    DrawCubeV({ egoLateral + 1.78f, 0.58f, -0.18f }, { 0.16f, 0.76f, 1.96f }, frameColor);
+    DrawCubeV({ egoLateral - 1.66f, 0.74f, -0.08f }, { 0.12f, 0.14f, 1.18f }, frameHighlight);
+    DrawCubeV({ egoLateral + 1.66f, 0.74f, -0.08f }, { 0.12f, 0.14f, 1.18f }, frameHighlight);
+    DrawCubeV({ egoLateral - 1.66f, 0.44f, 0.08f }, { 0.10f, 0.20f, 0.42f }, GetColor(0x0B1015FF));
+    DrawCubeV({ egoLateral + 1.66f, 0.44f, 0.08f }, { 0.10f, 0.20f, 0.42f }, GetColor(0x0B1015FF));
+
+    DrawCylinderEx({ egoLateral - 1.72f, 0.48f, 1.08f }, { egoLateral - 1.12f, 1.83f, 0.50f }, 0.07f, 0.10f, 12, frameColor);
+    DrawCylinderEx({ egoLateral + 1.72f, 0.48f, 1.08f }, { egoLateral + 1.12f, 1.83f, 0.50f }, 0.07f, 0.10f, 12, frameColor);
+    DrawCylinderEx({ egoLateral - 1.12f, 1.83f, 0.50f }, { egoLateral + 1.12f, 1.83f, 0.50f }, 0.08f, 0.08f, 12, frameColor);
+    DrawCylinderEx({ egoLateral - 1.10f, 1.82f, 0.48f }, { egoLateral - 1.12f, 1.76f, -1.40f }, 0.07f, 0.08f, 12, frameColor);
+    DrawCylinderEx({ egoLateral + 1.10f, 1.82f, 0.48f }, { egoLateral + 1.12f, 1.76f, -1.40f }, 0.07f, 0.08f, 12, frameColor);
+    DrawCylinderEx({ egoLateral - 1.16f, 1.74f, -0.72f }, { egoLateral - 1.25f, 0.62f, -0.72f }, 0.075f, 0.095f, 12, frameHighlight);
+    DrawCylinderEx({ egoLateral + 1.16f, 1.74f, -0.72f }, { egoLateral + 1.25f, 0.62f, -0.72f }, 0.075f, 0.095f, 12, frameHighlight);
+    DrawCubeV({ egoLateral, 1.84f, -0.46f }, { 2.32f, 0.08f, 0.12f }, frameHighlight);
+
+    DrawModelEx(steeringWheelModel, wheelCenter, { 0.0f, 0.0f, 1.0f }, 0.0f, { 0.72f, 0.72f, 0.72f }, GetColor(0x10161BFF));
+    DrawSphere({ wheelCenter.x, wheelCenter.y, wheelCenter.z - 0.10f }, 0.08f, GetColor(0x252E35FF));
+    DrawCylinderEx({ wheelCenter.x, wheelCenter.y, wheelCenter.z - 0.10f }, trafficWheelPoint(wheelCenter, 0.0f, 0.24f, steeringWheelAngle), 0.022f, 0.016f, 12, GetColor(0x20282EFF));
+    DrawCylinderEx({ wheelCenter.x, wheelCenter.y, wheelCenter.z - 0.10f }, trafficWheelPoint(wheelCenter, -0.21f, -0.15f, steeringWheelAngle), 0.022f, 0.016f, 12, GetColor(0x20282EFF));
+    DrawCylinderEx({ wheelCenter.x, wheelCenter.y, wheelCenter.z - 0.10f }, trafficWheelPoint(wheelCenter, 0.21f, -0.15f, steeringWheelAngle), 0.022f, 0.016f, 12, GetColor(0x20282EFF));
+    DrawSphere(trafficWheelPoint(wheelCenter, 0.0f, 0.30f, steeringWheelAngle), 0.03f, ORANGE);
+}
+
+static void drawTrafficImpactOverlay(int impactCount, const std::string& lastImpactSide, bool outOfLane)
+{
+    DrawRectangle(windowScreenWidth() - 244, 18, 220, 58, Fade(GetColor(0x10161BFF), 0.58f));
+    DrawRectangleLines(windowScreenWidth() - 244, 18, 220, 58, ORANGE);
+    DrawText(TextFormat("IMPACTS: %d", impactCount), windowScreenWidth() - 224, 30, 20, ORANGE);
+    DrawText(TextFormat("LAST: %s", lastImpactSide.c_str()), windowScreenWidth() - 224, 54, 14, GetColor(0xFFC066FF));
+
+    const Color laneColor = outOfLane ? ORANGE : GetColor(0x25FDCBFF);
+    const Color laneFill = outOfLane ? Fade(GetColor(0xD66B00FF), 0.72f) : Fade(GetColor(0x0D2B2DFF), 0.72f);
+    DrawRectangle(windowScreenWidth() - 244, 84, 220, 44, laneFill);
+    DrawRectangleLines(windowScreenWidth() - 244, 84, 220, 44, laneColor);
+    DrawText(outOfLane ? "LANE WARNING" : "LANE OK", windowScreenWidth() - 224, 96, 20, laneColor);
+}
+
+static int nextTrafficPassMilestone(int passedCars)
+{
+    if (passedCars < 50) return 50;
+    if (passedCars < 100) return 100;
+    if (passedCars < 200) return 200;
+    return ((passedCars / 200) + 1) * 200;
+}
+
+static void queueTrafficBanner(std::deque<TrafficBanner>& banners, const std::string& title, const std::string& detail, Color accent)
+{
+    TrafficBanner banner;
+    banner.title = title;
+    banner.detail = detail;
+    banner.accent = accent;
+    banners.push_back(banner);
+    while (banners.size() > 4)
+    {
+        banners.pop_back();
+    }
+}
+
+static void updateTrafficBannerQueue(std::deque<TrafficBanner>& banners, float frameTime)
+{
+    if (banners.empty()) return;
+
+    TrafficBanner& banner = banners.front();
+    banner.age += frameTime;
+    const float lifetime = TRAFFIC_BANNER_SLIDE_SECONDS * 2.0f + TRAFFIC_BANNER_HOLD_SECONDS;
+    if (banner.age >= lifetime)
+    {
+        banners.pop_front();
+    }
+}
+
+static void drawTrafficBannerQueue(const std::deque<TrafficBanner>& banners)
+{
+    if (banners.empty()) return;
+
+    const TrafficBanner& banner = banners.front();
+    const float lifetime = TRAFFIC_BANNER_SLIDE_SECONDS * 2.0f + TRAFFIC_BANNER_HOLD_SECONDS;
+    const float exitStart = TRAFFIC_BANNER_SLIDE_SECONDS + TRAFFIC_BANNER_HOLD_SECONDS;
+    float visible = 1.0f;
+    if (banner.age < TRAFFIC_BANNER_SLIDE_SECONDS)
+    {
+        visible = banner.age / TRAFFIC_BANNER_SLIDE_SECONDS;
+    }
+    else if (banner.age > exitStart)
+    {
+        visible = std::max(0.0f, (lifetime - banner.age) / TRAFFIC_BANNER_SLIDE_SECONDS);
+    }
+
+    visible = visible * visible * (3.0f - 2.0f * visible);
+    const float width = 430.0f;
+    const float height = 68.0f;
+    const float x = static_cast<float>((windowScreenWidth() - static_cast<int>(width)) / 2);
+    const float y = 140.0f - (1.0f - visible) * 110.0f;
+    DrawRectangleRounded({ x, y, width, height }, 0.14f, 8, Fade(GetColor(0x10161BFF), 0.84f));
+    DrawRectangleRoundedLinesEx({ x, y, width, height }, 0.14f, 8, 3.0f, banner.accent);
+    DrawRectangle(static_cast<int>(x), static_cast<int>(y), 8, static_cast<int>(height), banner.accent);
+    DrawText(banner.title.c_str(), static_cast<int>(x + 24.0f), static_cast<int>(y + 12.0f), 23, RAYWHITE);
+    DrawText(banner.detail.c_str(), static_cast<int>(x + 25.0f), static_cast<int>(y + 42.0f), 15, GetColor(0xD7DEE5FF));
+}
+
 //----------------------------------------------------------------------------------
 // end Handler classes
 
@@ -509,26 +1105,44 @@ int main() {
     std::string port = "443"; //https
 #endif
 
-    int statusCode;     // get status code by reference
-
+    int statusCode = 0;     // get status code by reference
+    std::string otp;
 #if DEBUG_CLIENT
-    std::string otp = PostRequestPassword("https://" + host + ":" + port + "/login", statusCode);
+    const std::string loginUrl = "https://" + host + ":" + port + "/login";
 #else
-    std::string otp = PostRequestPassword("https://" + host + "/login", statusCode);
+    const std::string loginUrl = "https://" + host + "/login";
 #endif
-    if ((statusCode == 200) && (otp != ""))
+
+    // The io_context is required for all I/O must be declared so that it is placed in memory
+    net::io_context ioc;
+
+    // The SSL context is required, and holds certificates
+    ssl::context ctx{ ssl::context::tlsv12_client };
+
+    std::shared_ptr<WebsocketSession> session;
+    try
     {
-        // The io_context is required for all I/O must be declared so that it is placed in memory
-        net::io_context ioc;
-
-        // The SSL context is required, and holds certificates
-        ssl::context ctx{ ssl::context::tlsv12_client };
-
-        // boost websockets
-        std::shared_ptr<WebsocketSession> session = WebsocketConn(ioc, ctx, host, port, otp, stdf_message, getCarColorString());
-
-        if (session)
+        otp = PostRequestPassword(loginUrl, statusCode);
+        if ((statusCode == 200) && (!otp.empty()))
         {
+            session = WebsocketConn(ioc, ctx, host, port, otp, stdf_message, getCarColorString());
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cout << "warning: multiplayer connection setup failed: " << e.what() << std::endl;
+    }
+
+    const bool multiplayerConnected = (session != nullptr);
+    if (!multiplayerConnected)
+    {
+        std::cout << "warning: multiplayer server unavailable; continuing in offline mode";
+        if (statusCode != 200)
+        {
+            std::cout << " (login status " << statusCode << ")";
+        }
+        std::cout << std::endl;
+    }
 
             // Initialize gui variables here
             //----------------------------------------------------------------------------------
@@ -542,6 +1156,7 @@ int main() {
             int letterCount = 0;
             int letterIdx = 0;
             std::string playerRacePortalCourseId;
+            bool playerInTrafficPortal = false;
             std::string gui_timestamp;
             std::map<std::string, CarContext> gui_externalplayers;
             std::deque<TextContext> gui_textmessagesdisplay;
@@ -583,11 +1198,35 @@ int main() {
             bool localRaceReady = false;
             int raceReadyCount = 0;
             int racePlayerCount = 0;
+            float trafficEgoLateral = trafficLaneCenter(1);
+            float trafficEgoSpeed = 0.0f;
+            float trafficHeadYaw = 0.0f;
+            float trafficHeadPitch = 0.0f;
+            float trafficDistance = 0.0f;
+            float trafficElapsedSeconds = 0.0f;
+            float trafficSteeringWheelAngle = 0.0f;
+            int trafficImpactCount = 0;
+            bool trafficImpactActive = false;
+            float trafficImpactCooldown = 0.0f;
+            int trafficPassedCars = 0;
+            int trafficDodgedSpeedRacers = 0;
+            int nextPassedCarsBanner = 50;
+            int nextDodgedSpeedRacerBanner = 3;
+            float cleanDistanceSinceImpact = 0.0f;
+            float nextCleanMileBanner = TRAFFIC_CLEAN_MILE_INTERVAL;
+            std::string trafficLastImpactSide = "NONE";
+            std::deque<TrafficBanner> trafficBanners;
+            std::vector<TrafficVehicle> trafficVehicles;
+            resetTrafficVehicles(trafficVehicles);
             playerPos = carPosition;
             updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
 
             // Create a RenderTexture2D to be used for render to texture
             RenderTexture2D target3DArea = LoadRenderTexture(windowScreenWidth(), windowYBoundary());
+            RenderTexture2D trafficMirrorTarget = LoadRenderTexture(420, 116);
+            RenderTexture2D trafficLeftPanelTarget = LoadRenderTexture(260, 96);
+            RenderTexture2D trafficRightPanelTarget = LoadRenderTexture(320, 96);
+            Model trafficSteeringWheelModel = LoadModelFromMesh(GenMeshTorus(0.18f, 0.9f, 36, 12));
 
             Texture2D groundTexture = loadTextureResource("ground_texture.png");
             SetTextureWrap(groundTexture, TEXTURE_WRAP_REPEAT);
@@ -649,6 +1288,31 @@ int main() {
                 g_Y = static_cast<int>(carPosition.y * SCALEFACTOR);
                 g_Angle = -carAngle + CAR_ANGLE_ADJUSTMENT;
                 updateChaseCamera(camera, carPosition, cameraAngle, cameraPitch);
+            };
+            auto resetTrafficSimulator = [&]() {
+                trafficEgoLateral = trafficLaneCenter(1);
+                trafficEgoSpeed = 18.0f;
+                trafficHeadYaw = 0.0f;
+                trafficHeadPitch = 0.0f;
+                trafficDistance = 0.0f;
+                trafficElapsedSeconds = 0.0f;
+                trafficSteeringWheelAngle = 0.0f;
+                trafficImpactCount = 0;
+                trafficImpactActive = false;
+                trafficImpactCooldown = 0.0f;
+                trafficPassedCars = 0;
+                trafficDodgedSpeedRacers = 0;
+                nextPassedCarsBanner = 50;
+                nextDodgedSpeedRacerBanner = 3;
+                cleanDistanceSinceImpact = 0.0f;
+                nextCleanMileBanner = TRAFFIC_CLEAN_MILE_INTERVAL;
+                trafficLastImpactSide = "NONE";
+                trafficBanners.clear();
+                resetTrafficVehicles(trafficVehicles);
+                g_X = static_cast<int>(trafficEgoLateral * SCALEFACTOR);
+                g_Y = 0;
+                g_Angle = 0.0f;
+                updateTrafficCamera(camera, trafficEgoLateral, trafficHeadYaw, trafficHeadPitch);
             };
             //----------------------------------------------------------------------------------
             // End Initialize model/3d variables here
@@ -785,7 +1449,7 @@ int main() {
                             {
                                 std::string uuidOfSender = std::string{ parsedJson["FromUUID"].get_string().value() };
                                 // sender is not current player
-                                if (uuidOfSender != session->getClientUUID())
+                                if (!session || (uuidOfSender != session->getClientUUID()))
                                 {
                                     // only display last 5 messages for now...
                                     std::string senderColor = std::string{ parsedJson["Color"].get_string().value() };
@@ -824,7 +1488,7 @@ int main() {
                                     const std::string readyUUID = std::string{ parsedJson["UUID"].get_string().value() };
                                     raceReadyCount = static_cast<int>(parsedJson["ReadyCount"].get_int64().value());
                                     racePlayerCount = static_cast<int>(parsedJson["PlayerCount"].get_int64().value());
-                                    if (readyUUID == session->getClientUUID())
+                                    if (session && (readyUUID == session->getClientUUID()))
                                     {
                                         localRaceReady = parsedJson["Ready"].get_bool().value();
                                     }
@@ -876,7 +1540,14 @@ int main() {
                             localRaceReady = true;
                             raceReadyCount = std::max(raceReadyCount, 1);
                             racePlayerCount = std::max(racePlayerCount, static_cast<int>(gui_externalplayers.size()) + 1);
-                            session->sendRaceReadyUpdate(raceCourse.courseId, true, true, raceCourse.lapCount);
+                            if (session)
+                            {
+                                session->sendRaceReadyUpdate(raceCourse.courseId, true, true, raceCourse.lapCount);
+                            }
+                            else
+                            {
+                                scheduleRaceStart(raceSession, raceCourse, currentEpochMilliseconds() + 5000, raceCourse.lapCount);
+                            }
                         }
                         if (raceDrivingEnabled && (carVelocity >= DRS_MIN_READY_SPEED) && IsKeyPressed(KEY_SPACE))
                         {
@@ -1057,7 +1728,10 @@ int main() {
                         {
                             if (raceSession.state == RaceRunState::STATE_WAITING)
                             {
-                                session->sendRaceReadyUpdate(raceCourse.courseId, false, false, raceCourse.lapCount);
+                                if (session)
+                                {
+                                    session->sendRaceReadyUpdate(raceCourse.courseId, false, false, raceCourse.lapCount);
+                                }
                             }
                             localRaceReady = false;
                             raceReadyCount = 0;
@@ -1070,6 +1744,97 @@ int main() {
                             skipMouseLookFrame = true;
                             g_X = 0;
                             g_Y = 125;
+                        }
+                    }
+                        break;
+                    case GameState::STATE_TRAFFIC_SIM:
+                    {
+                        const float frameTime = GetFrameTime();
+                        trafficElapsedSeconds += frameTime;
+
+                        mousePositionDelta = GetMouseDelta();
+                        if (skipMouseLookFrame)
+                        {
+                            mousePositionDelta = { 0.0f, 0.0f };
+                            skipMouseLookFrame = false;
+                        }
+                        mousePositionDelta.x = std::clamp(mousePositionDelta.x, -CAMERA_MAX_MOUSE_DELTA, CAMERA_MAX_MOUSE_DELTA);
+                        mousePositionDelta.y = std::clamp(mousePositionDelta.y, -CAMERA_MAX_MOUSE_DELTA, CAMERA_MAX_MOUSE_DELTA);
+                        trafficHeadYaw = std::clamp(trafficHeadYaw - mousePositionDelta.x * TRAFFIC_MOUSE_SENSITIVITY, -TRAFFIC_HEAD_MAX_YAW, TRAFFIC_HEAD_MAX_YAW);
+                        trafficHeadPitch = std::clamp(trafficHeadPitch - mousePositionDelta.y * TRAFFIC_MOUSE_SENSITIVITY, TRAFFIC_HEAD_MIN_PITCH, TRAFFIC_HEAD_MAX_PITCH);
+                        trafficHeadYaw = std::clamp(trafficHeadYaw + (IsKeyDown(KEY_LEFT) - IsKeyDown(KEY_RIGHT)) * TRAFFIC_KEY_LOOK_SPEED * frameTime, -TRAFFIC_HEAD_MAX_YAW, TRAFFIC_HEAD_MAX_YAW);
+                        trafficHeadPitch = std::clamp(trafficHeadPitch + (IsKeyDown(KEY_UP) - IsKeyDown(KEY_DOWN)) * TRAFFIC_KEY_LOOK_SPEED * frameTime, TRAFFIC_HEAD_MIN_PITCH, TRAFFIC_HEAD_MAX_PITCH);
+
+                        if (IsKeyDown(KEY_W))
+                        {
+                            trafficEgoSpeed += TRAFFIC_ACCELERATION * frameTime;
+                        }
+                        else if (IsKeyDown(KEY_S))
+                        {
+                            trafficEgoSpeed -= TRAFFIC_BRAKE_DECELERATION * frameTime;
+                        }
+                        else
+                        {
+                            trafficEgoSpeed -= TRAFFIC_COAST_DECELERATION * frameTime;
+                        }
+                        trafficEgoSpeed = std::clamp(trafficEgoSpeed, TRAFFIC_MIN_SPEED, TRAFFIC_MAX_SPEED);
+
+                        const float trafficSteerInput = static_cast<float>(IsKeyDown(KEY_A) - IsKeyDown(KEY_D));
+                        trafficEgoLateral += trafficSteerInput * TRAFFIC_STEER_SPEED * frameTime;
+                        trafficEgoLateral = std::clamp(trafficEgoLateral, -TRAFFIC_ROAD_HALF_WIDTH + 1.15f, TRAFFIC_ROAD_HALF_WIDTH - 1.15f);
+                        const float targetSteeringWheelAngle = -trafficSteerInput * TRAFFIC_STEERING_WHEEL_MAX_ANGLE;
+                        trafficSteeringWheelAngle += (targetSteeringWheelAngle - trafficSteeringWheelAngle) * std::min(1.0f, TRAFFIC_STEERING_WHEEL_RETURN_SPEED * frameTime);
+                        trafficDistance += trafficEgoSpeed * frameTime;
+                        cleanDistanceSinceImpact += trafficEgoSpeed * frameTime;
+                        const TrafficUpdateEvents trafficEvents = updateTrafficVehicles(trafficVehicles, trafficEgoSpeed, trafficElapsedSeconds, frameTime);
+                        trafficPassedCars += trafficEvents.passedCars;
+                        trafficDodgedSpeedRacers += trafficEvents.dodgedSpeedRacers;
+                        while (trafficPassedCars >= nextPassedCarsBanner)
+                        {
+                            queueTrafficBanner(trafficBanners, TextFormat("%d traffic passes", nextPassedCarsBanner), "Stay smooth through the pack", GetColor(0x25FDCBFF));
+                            nextPassedCarsBanner = nextTrafficPassMilestone(nextPassedCarsBanner);
+                        }
+                        while (trafficDodgedSpeedRacers >= nextDodgedSpeedRacerBanner)
+                        {
+                            queueTrafficBanner(trafficBanners, TextFormat("%d speed racers dodged", nextDodgedSpeedRacerBanner), "Mirror checks are paying off", GOLD);
+                            nextDodgedSpeedRacerBanner += 3;
+                        }
+                        while ((cleanDistanceSinceImpact / TRAFFIC_METERS_PER_MILE) >= nextCleanMileBanner)
+                        {
+                            queueTrafficBanner(trafficBanners, TextFormat("%.0f clean miles", nextCleanMileBanner), "No impacts in this streak", GetColor(0x00E430FF));
+                            nextCleanMileBanner += TRAFFIC_CLEAN_MILE_INTERVAL;
+                        }
+                        updateTrafficBannerQueue(trafficBanners, frameTime);
+                        trafficImpactCooldown = std::max(0.0f, trafficImpactCooldown - frameTime);
+                        const TrafficImpactResult trafficImpact = detectTrafficImpact(trafficVehicles, trafficEgoLateral);
+                        if (trafficImpact.hit)
+                        {
+                            if (!trafficImpactActive && trafficImpactCooldown <= 0.0f)
+                            {
+                                trafficImpactCount++;
+                                trafficLastImpactSide = trafficImpact.side;
+                                trafficImpactActive = true;
+                                trafficImpactCooldown = TRAFFIC_IMPACT_COOLDOWN_SECONDS;
+                                cleanDistanceSinceImpact = 0.0f;
+                                nextCleanMileBanner = TRAFFIC_CLEAN_MILE_INTERVAL;
+                            }
+                        }
+                        else
+                        {
+                            trafficImpactActive = false;
+                        }
+                        updateTrafficCamera(camera, trafficEgoLateral, trafficHeadYaw, trafficHeadPitch);
+
+                        if (windowIsKeyOnlyPressed(KEY_LEFT_SHIFT) || windowIsKeyOnlyPressed(KEY_RIGHT_SHIFT))
+                        {
+                            g_in_state_transition = true;
+                            currentGameState = GameState::STATE_LOBBY;
+                            currentCursorState = CursorState::STATE_CURSOR_ENABLED;
+                            mouseLookEnabled = false;
+                            skipMouseLookFrame = true;
+                            g_X = 0;
+                            g_Y = 125;
+                            move = true;
                         }
                     }
                         break;
@@ -1108,6 +1873,18 @@ int main() {
                         }
                         
                         // portal handling
+                        playerInTrafficPortal = windowIsPlayerCollidesTrafficPortal(g_X, g_Y);
+                        if (!mouseOnText && playerInTrafficPortal && windowIsKeyOnlyPressed(KEY_E))
+                        {
+                            resetTrafficSimulator();
+                            currentGameState = GameState::STATE_TRAFFIC_SIM;
+                            currentCursorState = CursorState::STATE_CURSOR_DISABLED;
+                            mouseLookEnabled = true;
+                            skipMouseLookFrame = true;
+                            g_in_state_transition = true;
+                            move = false;
+                        }
+
                         playerRacePortalCourseId = windowGetPlayerRacePortalCourseId(g_X, g_Y);
                         if (!mouseOnText && !playerRacePortalCourseId.empty() && windowIsKeyOnlyPressed(KEY_E))
                         {
@@ -1125,7 +1902,10 @@ int main() {
                             mouseLookEnabled = false;
                             skipMouseLookFrame = true;
                             g_in_state_transition = true;
-                            session->sendRaceReadyUpdate(raceCourse.courseId, false, true, raceCourse.lapCount);
+                            if (session)
+                            {
+                                session->sendRaceReadyUpdate(raceCourse.courseId, false, true, raceCourse.lapCount);
+                            }
                         }
                         break;
                 }
@@ -1149,7 +1929,10 @@ int main() {
                             if (windowGetColorSelectionMap().count(colorSelection))
                             {
                                 setCarColor(windowGetColorSelectionMap().at(colorSelection).hexValue);
-                                session->sendColorUpdate(windowGetColorSelectionMap().at(colorSelection).hexString);
+                                if (session)
+                                {
+                                    session->sendColorUpdate(windowGetColorSelectionMap().at(colorSelection).hexString);
+                                }
                             }
                             break;
                         default:
@@ -1220,7 +2003,10 @@ int main() {
                     else framesCounter = 0;
                     if (text)
                     {
-                        session->sendTextMessage("", "", std::string(textmessage)); // global is true, default current color
+                        if (session)
+                        {
+                            session->sendTextMessage("", "", std::string(textmessage)); // global is true, default current color
+                        }
                         text = false;
                     }
                 }
@@ -1229,7 +2015,10 @@ int main() {
 #ifdef TIMING_BENCHMARK
                     start = std::chrono::high_resolution_clock::now();
 #endif
-                    session->sendPosition(g_X, g_Y, g_Angle);
+                    if (session)
+                    {
+                        session->sendPosition(g_X, g_Y, g_Angle);
+                    }
 #ifdef TIMING_BENCHMARK
                     stop0 = std::chrono::high_resolution_clock::now();
 #endif
@@ -1374,6 +2163,60 @@ int main() {
                         EndDrawing();
                     }
                         break;
+                    case GameState::STATE_TRAFFIC_SIM:
+                    {
+                        drawTrafficCockpitPanelTextures(trafficLeftPanelTarget, trafficRightPanelTarget, trafficEgoSpeed, trafficHeadYaw, trafficDistance);
+
+                        BeginTextureMode(target3DArea);
+                        ClearBackground(RAYWHITE);
+                        BeginMode3D(camera);
+                        rlDisableBackfaceCulling();
+                        rlDisableDepthMask();
+                        DrawModel(skyboxModel, { 0.0f, 0.0f, 0.0f }, 1.0f, WHITE);
+                        rlEnableBackfaceCulling();
+                        rlEnableDepthMask();
+                        DrawModel(groundModel, { 0.0f, -0.09f, 0.0f }, 1.0f, WHITE);
+                        drawTrafficScene(trafficVehicles, trafficDistance);
+                        drawTrafficCockpit3D(camera, trafficSteeringWheelModel, trafficEgoLateral, trafficSteeringWheelAngle, trafficLeftPanelTarget.texture, trafficRightPanelTarget.texture);
+                        EndMode3D();
+                        EndTextureMode();
+
+                        BeginTextureMode(trafficMirrorTarget);
+                        ClearBackground(GetColor(0x9ED8FFFF));
+                        Camera mirrorCamera = makeTrafficRearViewCamera(trafficEgoLateral);
+                        BeginMode3D(mirrorCamera);
+                        rlDisableBackfaceCulling();
+                        rlDisableDepthMask();
+                        DrawModel(skyboxModel, { 0.0f, 0.0f, 0.0f }, 1.0f, WHITE);
+                        rlEnableBackfaceCulling();
+                        rlEnableDepthMask();
+                        DrawModel(groundModel, { 0.0f, -0.09f, 0.0f }, 1.0f, WHITE);
+                        drawTrafficScene(trafficVehicles, trafficDistance);
+                        EndMode3D();
+                        EndTextureMode();
+
+                        BeginDrawing();
+                        ClearBackground(RAYWHITE);
+                        DrawFPS(10, 10);
+                        DrawTextureRec(target3DArea.texture, { 0, 0, (float)target3DArea.texture.width, (float)-target3DArea.texture.height }, { 0, 0 }, WHITE);
+
+                        const Rectangle mirrorDest = { static_cast<float>((windowScreenWidth() - 420) / 2), 18.0f, 420.0f, 116.0f };
+                        DrawRectangleRounded({ mirrorDest.x - 8.0f, mirrorDest.y - 8.0f, mirrorDest.width + 16.0f, mirrorDest.height + 16.0f }, 0.12f, 8, Fade(BLACK, 0.62f));
+                        DrawTextureRec(trafficMirrorTarget.texture, { (float)trafficMirrorTarget.texture.width, 0, (float)-trafficMirrorTarget.texture.width, (float)-trafficMirrorTarget.texture.height }, { mirrorDest.x, mirrorDest.y }, WHITE);
+                        DrawRectangleRoundedLinesEx({ mirrorDest.x - 2.0f, mirrorDest.y - 2.0f, mirrorDest.width + 4.0f, mirrorDest.height + 4.0f }, 0.08f, 8, 3.0f, GetColor(0x11171DFF));
+                        DrawText("REAR VIEW", static_cast<int>(mirrorDest.x + 14), static_cast<int>(mirrorDest.y + 8), 14, RAYWHITE);
+
+                        drawTrafficBannerQueue(trafficBanners);
+                        drawTrafficImpactOverlay(trafficImpactCount, trafficLastImpactSide, trafficIsOutOfLane(trafficEgoLateral));
+                        DrawRectangle(24, 18, 348, 96, Fade(GetColor(0x10161BFF), 0.58f));
+                        DrawRectangleLines(24, 18, 348, 96, GetColor(0xD7DEE5FF));
+                        DrawText("Traffic Trainer", 42, 30, 24, RAYWHITE);
+                        DrawText("W/S accelerate and brake", 42, 60, 14, GetColor(0xD7DEE5FF));
+                        DrawText("A/D steer   Mouse/Arrows look", 42, 78, 14, GetColor(0xD7DEE5FF));
+                        DrawText("Shift exits to lobby", 42, 96, 14, GOLD);
+                        EndDrawing();
+                    }
+                        break;
                     case GameState::STATE_LOBBY:
                         BeginDrawing();
                         windowDrawBackground();
@@ -1404,6 +2247,7 @@ int main() {
                         drawChatSendBox(mouseOnText, textmessage);
                         drawSendTextButton();
                         drawPortalRaceInfoPane(playerRacePortalCourseId, windowCoursePortalDisplayName(playerRacePortalCourseId));
+                        drawTrafficSimInfoPane(playerInTrafficPortal);
                         if (mouseOnText)
                         {
                             if (letterCount < MAX_INPUT_CHARS)
@@ -1431,6 +2275,11 @@ int main() {
 
             // De-Initialization
             //--------------------------------------------------------------------------------------
+            UnloadRenderTexture(trafficRightPanelTarget); // Unload traffic cockpit right panel texture
+            UnloadRenderTexture(trafficLeftPanelTarget);  // Unload traffic cockpit left panel texture
+            UnloadRenderTexture(trafficMirrorTarget); // Unload traffic rear-view mirror texture
+            UnloadRenderTexture(target3DArea);        // Unload 3D render target
+            UnloadModel(trafficSteeringWheelModel);   // Unload generated traffic steering wheel model
             UnloadModel(groundModel);       // Unload ground model
             UnloadTexture(groundTexture);   // Unload ground texture
             UnloadShader(skyboxShader);     // Unload skybox shader
@@ -1438,16 +2287,13 @@ int main() {
             UnloadModel(skyboxModel);       // Unload skybox model
             UnloadModel(carModel);          // Unload car model
 
-            session->closeConnection();
+            if (session)
+            {
+                session->closeConnection();
+            }
             g_gameRunning = false;
             wsUpdatedJsonQueue.push(""); // get out of deadlock
             for (auto& t : m_threadList) t.join();
-        }
-    }
-    else
-    {
-        std::cout << "Error: couldn't login, http status code: " << statusCode << std::endl;
-    }
     CloseWindow();
 #ifdef TIMING_BENCHMARK
     timingReport.close();
